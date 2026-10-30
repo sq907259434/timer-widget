@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>倒计时</title>
+<style>
+  /* ============ 基础 ============
+     和「待办清单」「天气卡片」同一套视觉语言：深色玻璃 + 桌面快照做背景。
+     卡片尺寸 250x264、圆角 24。尺寸刻意做小：这类卡是「瞥一眼」用的，
+     不需要占一块地方（窗口由主进程按 CARD_W/H + 投影边距算）。 */
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:transparent; overflow:hidden;
+    font-family:-apple-system,"Segoe UI Variable Display","Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;
+    color:#fff;
+    cursor:default; user-select:none;
+    -webkit-app-region:no-drag;
+  }
+  :root{
+    --a:1;            /* 底色浓度（外观滑杆） */
+    --frost:0px;      /* 快照模糊半径 */
+    --red:#FF5A5A;
+    --ink1:rgba(255,255,255,.96);
+    --ink2:rgba(255,255,255,.62);
+    --ink3:rgba(255,255,255,.34);
+    /* 参考图是近黑中性玻璃：不是蓝灰。三个色标都很暗，靠内侧高光提亮边缘 */
+    --g1:#333333; --g2:#242424; --g3:#191919;
+  }
+
+  /* 桌面快照背景：真透明在桌面层里只透壁纸、透不出图标，所以垫一张快照 */
+  #bd{
+    position:absolute; inset:0; z-index:0; pointer-events:none;
+    background-size:100% 100%; background-repeat:no-repeat;
+    opacity:0; transition:opacity .25s ease;
+    filter:blur(var(--frost));
+  }
+  body.has-bd #bd{ opacity:1; }
+
+  .card{
+    position:absolute; inset:0;
+    border-radius:30px;
+    overflow:hidden;
+    /* 滚动时 .band 会变成独立合成层，光靠 overflow:hidden 有时裁不住圆角，
+       四个角会露出直角。再叠一层 clip-path 兜底（半径必须和 border-radius 一致）。 */
+    clip-path:inset(0 round 30px);
+    background-image:linear-gradient(178deg,
+      color-mix(in srgb, var(--g1) calc(var(--a) * 100%), transparent) 0%,
+      color-mix(in srgb, var(--g2) calc(var(--a) * 100%), transparent) 46%,
+      color-mix(in srgb, var(--g3) calc(var(--a) * 100%), transparent) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.13),
+      inset 0 0 0 1px rgba(255,255,255,.07),
+      inset 0 0 70px rgba(0,0,0,.45);
+  }
+  /* 顶部一层极淡的高光，让卡片"立"起来 */
+  .card::after{
+    content:""; position:absolute; inset:0; z-index:1; pointer-events:none;
+    border-radius:inherit;
+    background:radial-gradient(120% 80% at 16% -6%, rgba(255,255,255,.055), transparent 58%);
+  }
+
+  /* ============ 左侧：分钟滚轮 ============ */
+  .wheel{
+    position:absolute; left:0; top:0; width:172px; height:100%;
+    z-index:2;
+    /* 上下淡出：越远越淡，像真滚轮 */
+    -webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 22%, #000 78%, transparent 100%);
+            mask-image:linear-gradient(to bottom, transparent 0, #000 22%, #000 78%, transparent 100%);
+  }
+  /* 圆柱滚轮：7 个槽位。越远越小、越暗、越靠上/下——模拟圆柱面的透视压缩 */
+  .num{
+    position:absolute; left:35px; right:0;
+    text-align:left; line-height:1; font-variant-numeric:tabular-nums;
+    transform:translateY(-50%);
+    transition:font-size .18s ease, color .18s ease, opacity .18s ease;
+    will-change:transform,opacity;
+  }
+  .num.s-3{ top:calc(50% - 112px); font-size:15px; color:#3D3D3D; }
+  .num.s-2{ top:calc(50% - 89px);  font-size:22px; color:#575757; }
+  .num.s-1{ top:calc(50% - 53px);  font-size:30px; color:#8E8E8E; }
+  .num.s0 {
+    top:50%; font-size:55px; font-weight:300; letter-spacing:-1.5px;
+    color:#fff; text-shadow:0 0 22px rgba(255,255,255,.10);
+  }
+  .num.s1 { top:calc(50% + 53px);  font-size:30px; color:#8E8E8E; }
+  .num.s2 { top:calc(50% + 89px);  font-size:22px; color:#575757; }
+  .num.s3 { top:calc(50% + 112px); font-size:15px; color:#3D3D3D; }
+
+  /* 竖向标尺：一条极淡的竖线 + 每格一道短刻度（参考图里那根） */
+  /* 竖线不是均匀的：中间最亮，往两端渐隐（参考图里那根"凹槽"） */
+  .ruler{
+    position:absolute; left:97px; top:0; bottom:0; width:3px; z-index:2;
+    background:linear-gradient(to bottom,
+      rgba(255,255,255,.055) 0%,
+      rgba(255,255,255,.11) 24%,
+      rgba(255,255,255,.17) 50%,
+      rgba(255,255,255,.11) 76%,
+      rgba(255,255,255,.055) 100%);
+    box-shadow:1px 0 0 rgba(0,0,0,.45);
+  }
+  /* 液位：从顶端到圆点这一段的竖线是琥珀→红的渐变（参考图里最提气的一笔） */
+  .ruler-fill{
+    position:absolute; left:97px; top:0; height:50%; width:3px; z-index:3;
+    background:linear-gradient(to bottom,
+      #F6D48C 0%, #EFB36B 26%, #E88A57 58%, #E4633F 100%);
+    box-shadow:0 0 10px rgba(240,160,90,.35), 0 0 3px rgba(255,180,120,.5);
+    border-radius:2px 2px 0 0;
+    opacity:0;
+    transition:opacity .26s ease;
+  }
+  /* 默认态（0 分钟）没有液位：整条竖线是灰的。设了时间才亮起来 */
+  .card.filled .ruler-fill{ opacity:1; }
+  .ticks i{
+    position:absolute; left:132px; height:4px; border-radius:2px;
+    background:rgba(255,255,255,.32); z-index:2;
+  }
+  /* 中间那根最长，往两端逐级变短、变暗（跟数字的大小变化同一条曲线） */
+  .ticks i.t-3{ top:calc(50% - 112px); width:8px;  background:rgba(255,255,255,.16); }
+  .ticks i.t-2{ top:calc(50% - 89px);  width:11px; background:rgba(255,255,255,.22); }
+  .ticks i.t-1{ top:calc(50% - 53px);  width:15px; background:rgba(255,255,255,.30); }
+  .ticks i.t0 { top:50%;               width:20px; background:rgba(255,255,255,.38); }
+  .ticks i.t1 { top:calc(50% + 53px);  width:15px; background:rgba(255,255,255,.30); }
+  .ticks i.t2 { top:calc(50% + 89px);  width:11px; background:rgba(255,255,255,.22); }
+  .ticks i.t3 { top:calc(50% + 112px); width:8px;  background:rgba(255,255,255,.14); }
+
+  /* 液位覆盖的那一段（圆点以上）刻度跟着变暖，和液位同一套色 */
+  .card.filled .ticks i.t-3{ background:rgba(246,212,140,.62); }
+  .card.filled .ticks i.t-2{ background:rgba(240,170,110,.42); }
+  .card.filled .ticks i.t-1{ background:rgba(255,205,170,.30); }
+
+  /* 刻度带和数字带都要能整体位移（滚动），遮罩留在外层不动 */
+  .ticks-mask{
+    position:absolute; inset:0; z-index:2; pointer-events:none;
+    -webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 20%, #000 80%, transparent 100%);
+            mask-image:linear-gradient(to bottom, transparent 0, #000 20%, #000 80%, transparent 100%);
+  }
+  .band{
+    position:absolute; inset:0;
+    transition:transform .15s cubic-bezier(.22,.7,.25,1);
+    /* 不要写 will-change:transform —— 它会把这个带提升成独立合成层，
+       滚动时四个圆角就会露出直角（用户报的"多余的四个角"）。 */
+  }
+  /* 滚动过程中：外围两格淡出（槽位间距是透视压缩的，位移一格会错位，遮掉最干净） */
+  .card.rolling .num.s-3, .card.rolling .num.s-2,
+  .card.rolling .num.s2,  .card.rolling .num.s3,
+  .card.rolling .ticks i.t-3, .card.rolling .ticks i.t-2,
+  .card.rolling .ticks i.t2,  .card.rolling .ticks i.t3{ opacity:0; }
+
+  /* 中心指示：小圆点 + 红线 */
+  .ind{ position:absolute; left:0; top:50%; width:100%; height:0; z-index:3; pointer-events:none; }
+  .ind .dot{
+    position:absolute; left:89px; top:-9.5px; width:19px; height:19px; border-radius:50%;
+    background:radial-gradient(circle at 38% 34%, #ffffff 0%, #f0f0f0 52%, #b5b5b5 100%);
+    box-shadow:0 0 0 4px rgba(255,255,255,.07), 0 0 16px rgba(255,255,255,.30), 0 1px 3px rgba(0,0,0,.6);
+  }
+  .ind .dot::after{
+    content:""; position:absolute; left:50%; top:50%; width:6px; height:6px; margin:-3px 0 0 -3px;
+    border-radius:50%; background:#FF4D4D;
+    box-shadow:0 0 6px rgba(255,77,77,.9);
+  }
+  .ind .bar{
+    position:absolute; left:112px; top:-3px; width:48px; height:6px; border-radius:3px;
+    /* 参考图那根红线是"渐隐"的，末端不能出现胶囊头：只留柔光，不加紧贴的描边光 */
+    background:linear-gradient(90deg, #FF4D4D 0%, rgba(255,77,77,.9) 45%, rgba(255,77,77,.35) 78%, rgba(255,77,77,0) 100%);
+    /* 参考图那团光是"淡淡的暖色扩散"，不是把卡片染红：只留一层柔光 */
+    box-shadow:0 0 12px rgba(255,70,70,.55), 0 0 34px 6px rgba(255,60,60,.10);
+    transition:opacity .2s ease;
+  }
+
+  /* ============ 右下：播放 / 暂停 ============ */
+  .play{
+    position:absolute; right:22px; bottom:22px; z-index:4;
+    width:55px; height:55px; padding:0; border:0; border-radius:50%;
+    background:rgba(255,255,255,.035);
+    box-shadow:inset 0 0 0 2px rgba(255,255,255,.22), 0 0 26px rgba(0,0,0,.35);
+    color:rgba(255,255,255,.9); cursor:pointer;
+    display:grid; place-items:center;
+    transition:background .16s ease, box-shadow .16s ease, transform .1s ease;
+  }
+  .play:hover{ background:rgba(255,255,255,.07); box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.26); }
+  .play:hover svg{ color:#fff; }
+  .play:active{ transform:scale(.95); }
+  .play svg{ width:23px; height:23px; display:none; color:#8C8C8C; }
+  .play svg.on{ display:block; }
+  /* 跑起来之后按钮换成红色强调（参考图里暂停是红的） */
+  .card.run .play{ box-shadow:inset 0 0 0 2px rgba(255,90,90,.55); color:#FF7A6A; }
+  .card.run .play svg{ color:#FF7A6A; }
+
+  /* 左下：重置（只有跑起来/暂停时才出现） */
+  .reset{
+    position:absolute; left:22px; bottom:22px; z-index:4;
+    width:44px; height:44px; padding:0; border:0; border-radius:50%;
+    background:rgba(255,255,255,.025);
+    box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.12);
+    color:rgba(255,255,255,.45); cursor:pointer;
+    display:none; place-items:center;
+    transition:background .15s ease, color .15s ease;
+  }
+  .card.run .reset{ display:grid; }
+  .reset:hover{ background:rgba(255,255,255,.07); color:#fff; }
+  .reset svg{ width:18px; height:18px; }
+
+  /* ============ 底部提示 ============ */
+  /* ============ 运行态：大数字换成 mm:ss ============ */
+  .card.run .num:not(.s0){ opacity:0; }
+  .card.run .wheel{ width:100%; }
+  .card.run .num.s0{
+    left:0; right:0; text-align:center; top:42%;
+    font-size:46px; font-weight:400; letter-spacing:1.5px;
+  }
+  .card.run .ruler, .card.run .ticks, .card.run .ruler-fill, .card.run .ind{ opacity:0; }
+  .card.run .ind .bar{ opacity:.55; }
+
+  /* ============ 到点：整卡红闪 ============ */
+  @keyframes flash{
+    0%,100%{ box-shadow:inset 0 0 0 1px rgba(255,90,90,.10); background-color:transparent; }
+    50%{ box-shadow:inset 0 0 0 2px rgba(255,90,90,.85), 0 0 26px rgba(255,90,90,.35); background-color:rgba(255,90,90,.10); }
+  }
+  .card.alarm{ animation:flash 1s ease-in-out infinite; }
+  .card.alarm .num.big{ color:var(--red); }
+
+  /* ============ 双击改时间：就地输入框 ============ */
+  .edit{
+    position:absolute; left:17px; top:50%; transform:translateY(-50%);
+    width:128px; height:48px; z-index:6;
+    padding:0 10px; border:0; border-radius:8px;
+    background:rgba(10,14,24,.62);
+    box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.42);
+    color:#fff; font:300 30px/1 inherit; font-variant-numeric:tabular-nums;
+    outline:none; display:none;
+  }
+  .edit.on{ display:block; }
+
+  /* ============ 外观面板（右键菜单进来） ============ */
+  .panel{
+    position:absolute; left:0; right:0; bottom:0; z-index:8;
+    padding:12px 16px 14px;
+    background:rgba(14,18,30,.94);
+    box-shadow:0 -1px 0 rgba(255,255,255,.10), 0 -12px 28px rgba(0,0,0,.4);
+    display:none;
+  }
+  .panel.on{ display:block; }
+  .panel h4{ margin:0 0 8px; font-size:11px; font-weight:600; color:var(--ink2); letter-spacing:.3px; }
+  .row{ display:flex; align-items:center; gap:10px; margin-bottom:7px; font-size:11.5px; color:var(--ink2); }
+  .row span{ flex:0 0 44px; }
+  .row b{ flex:0 0 34px; text-align:right; font-weight:500; color:var(--ink3); font-variant-numeric:tabular-nums; }
+  .row input[type=range]{ flex:1 1 auto; min-width:0; accent-color:#8ea0c4; height:16px; }
+  .panel .close{ margin-top:2px; font-size:11px; color:var(--ink3); text-align:right; cursor:pointer; }
+  .panel .close:hover{ color:#fff; }
+</style>
+</head>
+<body>
+<div id="bd"></div>
+
+<div class="card" id="card">
+  <div class="ruler"></div>
+  <div class="ruler-fill" id="rulerFill"></div>
+  <div class="ticks-mask">
+    <div class="band" id="tickBand">
+      <div class="ticks">
+        <i class="t-3"></i><i class="t-2"></i><i class="t-1"></i><i class="t0"></i>
+        <i class="t1"></i><i class="t2"></i><i class="t3"></i>
+      </div>
+    </div>
+  </div>
+
+  <div class="wheel" id="wheel">
+    <div class="band" id="numBand">
+      <div class="num s-3" id="nm3"></div>
+      <div class="num s-2" id="nm2"></div>
+      <div class="num s-1" id="nm1"></div>
+      <div class="num s0"  id="n0">0</div>
+      <div class="num s1"  id="np1"></div>
+      <div class="num s2"  id="np2"></div>
+      <div class="num s3"  id="np3"></div>
+    </div>
+  </div>
+
+  <div class="ind"><i class="dot"></i><i class="bar"></i></div>
+
+  <input class="edit" id="edit" maxlength="2" inputmode="numeric" spellcheck="false" autocomplete="off">
+
+  <button class="reset" id="reset" title="重置">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.5 3.6v4.2h-4.2"/>
+    </svg>
+  </button>
+
+  <button class="play" id="play" title="开始 / 暂停">
+    <svg class="on" id="icoPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>
+    <svg id="icoPause" viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="5.5" width="3.4" height="13" rx="1.2"/><rect x="13.6" y="5.5" width="3.4" height="13" rx="1.2"/></svg>
+  </button>
+
+  <div class="panel" id="panel">
+    <h4>外观</h4>
+    <label class="row"><span>透明度</span><input id="lkAlpha" type="range" min="8" max="100" step="1"><b id="lkAlphaV"></b></label>
+    <label class="row"><span>磨砂</span><input id="lkFrost" type="range" min="0" max="20" step="1"><b id="lkFrostV"></b></label>
+    <div class="close" id="lkClose">收起</div>
+  </div>
+</div>
+
+<script>
+/* ================= preload 缺失时的兜底 =================
+   window.wgt 由 preload 注入。没注入时补一层空实现，最差退化成普通网页，
+   而不是整页脚本抛错、卡片变成静态 HTML（另两张卡踩过这个坑）。 */
+if (!window.wgt) {
+  const noop = () => {};
+  const on = () => noop;
+  window.wgt = {
+    acrylic: false,
+    close: noop, menu: noop, raise: noop, rest: noop, dragBegin: noop, dragEnd: noop,
+    imeBegin: noop, imeEnd: noop, done: noop,
+    backdropNow: () => Promise.resolve(null),
+    getLook: () => Promise.resolve(null),
+    setLook: () => Promise.resolve(true),
+    onBackdrop: on, onBdFull: on, onBdPos: on, onBdDragEnd: on, onShowLook: on, onPreset: on,
+    onImeText: on, onImeCommit: on, onImeCancel: on, onImeBlur: on,
+  };
+}
+
+const $ = (id) => document.getElementById(id);
+const cardEl = $("card");
+
+/* ================= 状态 =================
+   mode: "idle"（可调时间）| "run"（倒计时中）| "pause"（暂停，显示剩余）
+   minutes: 设定的分钟数（0–60）；remain: 剩余毫秒 */
+const MIN_MAX = 60;
+const KEY = "timer_min_v1";
+
+let minutes = 0;      /* 默认 0：跟参考图一致，滚一下才开始设定 */
+let mode = "idle";
+let remain = 0;          /* 毫秒 */
+let endAt = 0;           /* 运行时的目标时间戳 */
+let raf = null;
+let alarmOn = false;
+
+try {
+  /* 注意：getItem 返回 null 时 Number(null) === 0，会把手上的默认值 25 冲成 0 */
+  const raw = localStorage.getItem(KEY);
+  if (raw != null) {
+    const v = Number(raw);
+    if (Number.isFinite(v) && v >= 0 && v <= MIN_MAX) minutes = Math.round(v);
+  }
+} catch (e) {}
+
+/* 滚轮的 7 个槽位：id + 相对当前值的偏移 */
+const SLOTS = [["nm3", -3], ["nm2", -2], ["nm1", -1], ["np1", 1], ["np2", 2], ["np3", 3]];
+
+const pad2 = (n) => String(n).padStart(2, "0");
+/* 输入框用：夹在 0–60 */
+const clampMin = (v) => Math.max(0, Math.min(MIN_MAX, Math.round(v)));
+/* 滚轮用：0–60 首尾相接（0 再往上就是 60），跟参考图一致 */
+const wrapMin = (v) => {
+  const n = Math.round(v) % (MIN_MAX + 1);
+  return n < 0 ? n + (MIN_MAX + 1) : n;
+};
+
+/* ================= 滚动动画 =================
+   数字带和刻度带一起平移一格，到点后瞬间归位并换值。
+   槽位间距是透视压缩的（53 / 36 / 23），所以位移一格只有中心与相邻格是精确对齐的，
+   外围两格在滚动过程中淡出（.card.rolling），避免看到错位。
+   刻度带用同一个位移量，所以它和数字是"同一根尺子"，一起滚。 */
+const ROW_SHIFT = 53;                 /* 中心到相邻槽位的距离 */
+let rollTimer = 0, rollNext = null, rollKeep = false;
+
+/* 连滚时 minutes 还没更新，取"正在滚向的那个值"当基准 */
+const curValue = () => (rollNext != null ? rollNext : minutes);
+
+function rollTo(dir, next, keepRemain) {
+  if (rollTimer) finishRoll();        /* 连滚：上一格立刻落定，不排队 */
+  rollNext = next;
+  rollKeep = !!keepRemain;
+  const dy = dir > 0 ? -ROW_SHIFT : ROW_SHIFT;
+  const band = $("numBand"), tick = $("tickBand");
+  cardEl.classList.add("rolling");
+  band.style.transition = "";
+  tick.style.transition = "";
+  band.style.transform = "translateY(" + dy + "px)";
+  tick.style.transform = "translateY(" + dy + "px)";
+  rollTimer = setTimeout(finishRoll, 150);
+}
+
+function finishRoll() {
+  if (!rollTimer) return;
+  clearTimeout(rollTimer);
+  rollTimer = 0;
+  const band = $("numBand"), tick = $("tickBand");
+  /* 归位这一下必须没有过渡，否则会看到"滚上去又滚回来" */
+  band.style.transition = "none";
+  tick.style.transition = "none";
+  band.style.transform = "";
+  tick.style.transform = "";
+  void band.offsetHeight;             /* 强制回流，让上面的 none 立刻生效 */
+  band.style.transition = "";
+  tick.style.transition = "";
+  cardEl.classList.remove("rolling");
+  const next = rollNext, keep = rollKeep;
+  rollNext = null;
+  rollKeep = false;
+  if (next != null) setMinutes(next, keep);
+}
+
+/* ================= 渲染 ================= */
+function mmss(ms) {
+  const t = Math.max(0, Math.ceil(ms / 1000));
+  return pad2(Math.floor(t / 60)) + ":" + pad2(t % 60);
+}
+
+function label(v) {
+  /* 首尾相接：0 的上面是 60，60 的下面是 0（参考图就是这个排法） */
+  return String(wrapMin(v));
+}
+
+function render() {
+  const n0 = $("n0");
+  /* 设了时间才点亮液位（默认 0 分钟时整条竖线是灰的） */
+  cardEl.classList.toggle("filled", minutes > 0);
+  if (mode === "run" || mode === "pause") {
+    cardEl.classList.add("run");
+    n0.textContent = mmss(remain);
+    $("icoPlay").classList.toggle("on", mode === "pause");
+    $("icoPause").classList.toggle("on", mode === "run");
+  } else {
+    cardEl.classList.remove("run");
+    n0.textContent = String(minutes);
+    $("icoPlay").classList.add("on");
+    $("icoPause").classList.remove("on");
+  }
+  if (mode !== "run" && mode !== "pause") {
+    SLOTS.forEach(([id, off]) => { $(id).textContent = label(minutes + off); });
+  }
+  syncHeight();
+}
+
+/* 页面高度固定，这里只是让主进程知道"没变化"（贴桌面层时窗口尺寸由主进程定） */
+function syncHeight() {}
+
+/* ================= 设定 / 开始 / 暂停 ================= */
+function setMinutes(v, keepRemain) {
+  minutes = clampMin(v);
+  try { localStorage.setItem(KEY, String(minutes)); } catch (e) {}
+  if (!keepRemain) { remain = minutes * 60000; }
+  if (mode !== "run") mode = "idle";
+  stopAlarm();
+  render();
+}
+
+function start() {
+  if (minutes <= 0) return;
+  remain = minutes * 60000;
+  endAt = Date.now() + remain;
+  mode = "run";
+  stopAlarm();
+  render();
+  tickLoop();
+}
+
+function resume() {
+  if (remain <= 0) { start(); return; }
+  endAt = Date.now() + remain;
+  mode = "run";
+  render();
+  tickLoop();
+}
+
+function pause() {
+  remain = Math.max(0, endAt - Date.now());
+  mode = "pause";
+  if (raf) { cancelAnimationFrame(raf); raf = null; }
+  render();
+}
+
+function tickLoop() {
+  if (raf) cancelAnimationFrame(raf);
+  const step = () => {
+    if (mode !== "run") return;
+    remain = Math.max(0, endAt - Date.now());
+    if (remain <= 0) { finish(); return; }
+    render();
+    raf = requestAnimationFrame(step);
+  };
+  raf = requestAnimationFrame(step);
+}
+
+/* ================= 到点 ================= */
+function finish() {
+  mode = "idle";
+  remain = 0;
+  alarmOn = true;
+  cardEl.classList.add("alarm");
+  $("n0").textContent = "00:00";
+  $("icoPlay").classList.add("on");
+  $("icoPause").classList.remove("on");
+  try { window.wgt.done(); } catch (e) {}   /* 主进程响三声 */
+}
+
+function stopAlarm() {
+  if (!alarmOn) return;
+  alarmOn = false;
+  cardEl.classList.remove("alarm");
+}
+
+/* ================= 交互：滚轮 ================= */
+cardEl.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  if (mode === "run") return;                 /* 跑着的时候不调，先暂停 */
+  if (alarmOn) { stopAlarm(); setMinutes(minutes); return; }
+  /* 方向：往下滚（deltaY > 0）是 0→1→2… 递增（用户要求，和常见滚轮相反） */
+  const d = e.deltaY > 0 ? 1 : -1;
+  rollTo(d, wrapMin(curValue() + d), false);
+}, { passive: false });
+
+/* ================= 交互：重置 ================= */
+$("reset").addEventListener("click", () => {
+  if (raf) { cancelAnimationFrame(raf); raf = null; }
+  mode = "idle";
+  stopAlarm();
+  setMinutes(minutes);          /* 回到设定值，重新可调 */
+});
+
+/* ================= 交互：播放 / 暂停 ================= */
+$("play").addEventListener("click", () => {
+  if (alarmOn) { stopAlarm(); setMinutes(minutes); return; }
+  if (mode === "run") pause();
+  else if (mode === "pause") resume();
+  else start();
+});
+
+/* 到点后点卡片任意处也算"我知道了" */
+cardEl.addEventListener("mousedown", (e) => {
+  if (alarmOn && !e.target.closest("button, input, .panel")) { stopAlarm(); setMinutes(minutes); }
+}, true);
+
+/* ================= 交互：双击改时间 =================
+   桌面层里卡片拿不到键盘焦点，所以和另两张卡一样走"幽灵输入窗"代收：
+   focusin 报矩形 → 主进程把隐形窗摆上去代打 → 文字实时镜像回来。 */
+const edit = $("edit");
+let editOn = false;
+
+function openEdit() {
+  if (mode === "run") return;
+  editOn = true;
+  edit.value = String(minutes);
+  edit.classList.add("on");
+  $("n0").style.visibility = "hidden";
+  edit.focus();
+  edit.select();
+  const r = edit.getBoundingClientRect();
+  try { window.wgt.imeBegin({ x: r.left, y: r.top, w: r.width, h: r.height, value: edit.value }); } catch (e) {}
+}
+
+function closeEdit(commit) {
+  if (!editOn) return;
+  editOn = false;
+  edit.classList.remove("on");
+  $("n0").style.visibility = "";
+  try { window.wgt.imeEnd(); } catch (e) {}
+  if (commit) {
+    const v = parseInt(String(edit.value).replace(/[^\d]/g, ""), 10);
+    if (Number.isFinite(v)) setMinutes(v);
+  }
+  render();
+}
+
+$("n0").addEventListener("dblclick", openEdit);
+cardEl.addEventListener("dblclick", (e) => {
+  if (e.target.closest("button, input, .panel")) return;
+  if (!editOn) openEdit();
+});
+
+edit.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); closeEdit(true); }
+  else if (e.key === "Escape") { e.preventDefault(); closeEdit(false); }
+});
+edit.addEventListener("blur", () => { if (editOn) closeEdit(true); });
+
+/* 输入桥回来的字 */
+if (window.wgt.onImeText) {
+  window.wgt.onImeText((v) => {
+    edit.value = String(v == null ? "" : v).replace(/[^\d]/g, "").slice(0, 2);
+  });
+  window.wgt.onImeCommit(() => closeEdit(true));
+  window.wgt.onImeCancel(() => { edit.value = ""; closeEdit(false); });
+  window.wgt.onImeBlur(() => { if (editOn) closeEdit(true); });
+}
+
+/* ================= 交互：拖动窗口 =================
+   按住卡片空白处拖（按钮/输入框/面板除外）。位移由主进程跟系统光标算，
+   页面只报"按下/松开"。 */
+const NO_DRAG = "button, input, .panel";
+let pressing = false;
+window.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  if (e.target.closest(NO_DRAG)) return;
+  pressing = true;
+  document.body.classList.add("press-lock");
+  try { window.wgt.dragBegin(); } catch (er) {}
+}, true);
+const endPress = () => {
+  if (!pressing) return;
+  pressing = false;
+  document.body.classList.remove("press-lock");
+  try { window.wgt.dragEnd(); } catch (er) {}
+};
+window.addEventListener("mouseup", endPress);
+window.addEventListener("blur", endPress);
+
+/* ================= 右键菜单 ================= */
+cardEl.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  try { window.wgt.menu(); } catch (er) {}
+});
+
+/* ================= 桌面快照背景 ================= */
+function setBackdrop(p) {
+  const bd = $("bd");
+  if (!p || !p.url) { document.body.classList.remove("has-bd"); return; }
+  bd.style.backgroundImage = "url(" + p.url + ")";
+  bd.style.backgroundSize = "100% 100%";
+  bd.style.left = p.left + "px";
+  bd.style.top = p.top + "px";
+  bd.style.width = p.w + "px";
+  bd.style.height = p.h + "px";
+  bd.style.position = "absolute";
+  document.body.classList.add("has-bd");
+}
+if (window.wgt.onBackdrop) window.wgt.onBackdrop(setBackdrop);
+if (window.wgt.backdropNow) window.wgt.backdropNow().then(setBackdrop).catch(() => {});
+
+/* ================= 外观（透明度 / 磨砂） ================= */
+const LOOK = { alpha: 1, frost: 0 };
+function applyLook() {
+  const r = document.documentElement.style;
+  r.setProperty("--a", String(LOOK.alpha));
+  r.setProperty("--frost", LOOK.frost + "px");
+  const ai = $("lkAlpha"), fi = $("lkFrost");
+  if (ai) ai.value = String(Math.round(LOOK.alpha * 100));
+  if (fi) fi.value = String(Math.round(LOOK.frost));
+  if ($("lkAlphaV")) $("lkAlphaV").textContent = Math.round(LOOK.alpha * 100) + "%";
+  if ($("lkFrostV")) $("lkFrostV").textContent = Math.round(LOOK.frost) + "px";
+}
+let lookTimer = null;
+function saveLookSoon() {
+  clearTimeout(lookTimer);
+  lookTimer = setTimeout(() => { try { window.wgt.setLook(LOOK); } catch (e) {} }, 220);
+}
+$("lkAlpha").addEventListener("input", () => {
+  LOOK.alpha = Math.min(1, Math.max(0.08, Number($("lkAlpha").value) / 100));
+  applyLook(); saveLookSoon();
+});
+$("lkFrost").addEventListener("input", () => {
+  LOOK.frost = Math.min(20, Math.max(0, Number($("lkFrost").value) || 0));
+  applyLook(); saveLookSoon();
+});
+$("lkClose").addEventListener("click", () => $("panel").classList.remove("on"));
+if (window.wgt.onShowLook) window.wgt.onShowLook(() => $("panel").classList.toggle("on"));
+if (window.wgt.getLook) {
+  window.wgt.getLook().then((v) => {
+    if (!v) return;
+    if (Number.isFinite(v.alpha)) LOOK.alpha = Math.min(1, Math.max(0.08, v.alpha));
+    if (Number.isFinite(v.frost)) LOOK.frost = Math.min(20, Math.max(0, v.frost));
+    applyLook();
+  }).catch(() => {});
+}
+applyLook();
+
+/* ================= 右键菜单的预设时长 ================= */
+if (window.wgt.onPreset) {
+  window.wgt.onPreset((m) => {
+    if (m > 0) { mode = "idle"; setMinutes(m); }
+  });
+}
+
+/* ================= 启动 ================= */
+document.body.classList.add(window.wgt && window.wgt.acrylic ? "acrylic" : "solid");
+remain = minutes * 60000;
+render();
+</script>
+</body>
+</html>
