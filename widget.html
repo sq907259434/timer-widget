@@ -469,9 +469,11 @@
 
   /* 运行态的按钮：暂停是红色实心，重置是深灰实心（参考图） */
   .card.run .play{
-    background:#E8564E;
-    box-shadow:0 6px 18px rgba(232,86,78,.38), inset 0 1px 0 rgba(255,255,255,.22);
-    color:#fff;
+    /* 和"再来一次"同尺寸（方形 42 / 横版 40），只是靠颜色区分；
+       红色原来太抢眼（还带一圈强光晕，看着比另一个大），把不透明度和光晕都压下来。 */
+    background:rgba(232,86,78,.86);
+    box-shadow:0 3px 10px rgba(232,86,78,.20), inset 0 1px 0 rgba(255,255,255,.16);
+    color:rgba(255,255,255,.95);
   }
   .card.run .play:hover{ background:#F0645C; }
   .card.run .play svg{ color:#fff; }
