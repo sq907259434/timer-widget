@@ -179,8 +179,8 @@
 
   /* ============ 右下：播放 / 暂停 ============ */
   .play{
-    position:absolute; right:22px; bottom:22px; z-index:4;
-    width:55px; height:55px; padding:0; border:0; border-radius:50%;
+    position:relative; z-index:4;
+    width:42px; height:42px; padding:0; border:0; border-radius:50%;
     background:rgba(255,255,255,.035);
     box-shadow:inset 0 0 0 2px rgba(255,255,255,.22), 0 0 26px rgba(0,0,0,.35);
     color:rgba(255,255,255,.9); cursor:pointer;
@@ -190,17 +190,21 @@
   .play:hover{ background:rgba(255,255,255,.07); box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.26); }
   .play:hover svg{ color:#fff; }
   .play:active{ transform:scale(.95); }
-  .play svg{ width:23px; height:23px; display:none; color:#8C8C8C; }
+  .play svg{ width:18px; height:18px; display:none; color:#8C8C8C; }
   .play svg.on{ display:block; }
   /* 跑起来之后按钮换成红色强调（参考图里暂停是红的） */
   .card.run .play{ box-shadow:inset 0 0 0 2px rgba(255,90,90,.55); color:#FF7A6A; }
   .card.run .play svg{ color:#FF7A6A; }
 
   /* 左下：重置（只有跑起来/暂停时才出现） */
+  /* 底部一排按钮：以卡片中线左右对称，两个同尺寸 */
+  .btns{
+    position:absolute; left:0; right:0; bottom:20px; z-index:4;
+    display:flex; align-items:center; justify-content:center; gap:26px;
+  }
   .reset{
-    /* 和播放键并排放在右下（原来在最左下，离得远、误触也多） */
-    position:absolute; right:85px; bottom:26px; z-index:4;
-    width:44px; height:44px; padding:0; border:0; border-radius:50%;
+    position:relative; z-index:4;
+    width:42px; height:42px; padding:0; border:0; border-radius:50%;
     background:rgba(255,255,255,.025);
     box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.12);
     color:rgba(255,255,255,.45); cursor:pointer;
@@ -209,7 +213,7 @@
   }
   .card.run .reset{ display:grid; }
   .reset:hover{ background:rgba(255,255,255,.07); color:#fff; }
-  .reset svg{ width:18px; height:18px; }
+  .reset svg{ width:16px; height:16px; }
   /* 重置的两段确认：第一下之后变红，提示"再点一次" */
   .reset.arm{
     color:#FF7A6A;
@@ -307,7 +311,9 @@
   /* 到点：边框加粗成明显的红环，再配合呼吸闪（用户要求"边框画粗一点"） */
   /* 暂停：数字明显变淡（配右下暂停键的红色，一眼看出"停住了"） */
   .card.pause .num.s0{ opacity:.42; }
-  .card.pause .ruler-fill{ opacity:.5; }
+  /* 注意：这里不能再写 .card.pause .ruler-fill{opacity:.5} ——
+     它在运行态规则之后，会把 .card.run .ruler-fill{opacity:0} 覆盖掉，
+     暂停一下就看见红线又冒出来了（用户报的 bug）。 */
 
   .card.alarm{
     animation:flash 1s ease-in-out infinite;
@@ -322,12 +328,17 @@
 
   /* ============ 双击改时间：就地输入框 ============ */
   .edit{
-    position:absolute; left:17px; top:50%; transform:translateY(-50%);
-    width:128px; height:48px; z-index:6;
-    padding:0 10px; border:0; border-radius:8px;
-    background:rgba(10,14,24,.62);
-    box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.42);
-    color:#fff; font:300 30px/1 inherit; font-variant-numeric:tabular-nums;
+    position:absolute; left:14px; top:50%; transform:translateY(-50%);
+    /* 原来 128x48、字号 30：只能显示两三个字符，输 3:30 直接溢出看不见 */
+    width:180px; height:56px; z-index:6;
+    padding:0 12px; border:0; border-radius:10px;
+    /* 不透明：半透明时圆点和红条会透在输入框里，看着像坏了一层 */
+    background:#12161F;
+    box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.42), 0 6px 18px rgba(0,0,0,.45);
+    /* 注意：不能写 font:500 34px/1 inherit —— "inherit" 不是合法字体族，
+       整条简写会被丢弃，输入框就退回浏览器默认的 13px（看不清也点不准）。 */
+    color:#fff; font-size:34px; font-weight:500; line-height:1; font-family:inherit;
+    font-variant-numeric:tabular-nums;
     outline:none; display:none;
   }
   .edit.on{ display:block; }
@@ -448,7 +459,7 @@
   body.light .card.run .play svg{ color:#FF6B5E; }
 
   body.light .edit{
-    background:rgba(255,255,255,.96);
+    background:#FFFFFF;
     box-shadow:inset 0 0 0 1.5px rgba(0,0,0,.22);
     color:#111;
   }
@@ -506,8 +517,9 @@
 
   <div class="tip" id="tip"></div>
 
-  <input class="edit" id="edit" maxlength="2" inputmode="numeric" spellcheck="false" autocomplete="off">
+  <input class="edit" id="edit" maxlength="8" inputmode="text" spellcheck="false" autocomplete="off">
 
+  <div class="btns" id="btns">
   <button class="reset" id="reset" title="重置">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.5 3.6v4.2h-4.2"/>
@@ -518,6 +530,7 @@
     <svg class="on" id="icoPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z"/></svg>
     <svg id="icoPause" viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="5.5" width="3.4" height="13" rx="1.2"/><rect x="13.6" y="5.5" width="3.4" height="13" rx="1.2"/></svg>
   </button>
+  </div>
 
   <div class="panel" id="panel">
     <h4>外观</h4>
@@ -1102,7 +1115,7 @@ let editOn = false;
 function openEdit() {
   if (mode === "run") return;
   editOn = true;
-  edit.value = String(minutes);
+  edit.value = label(minutes);
   edit.classList.add("on");
   $("n0").style.visibility = "hidden";
   edit.focus();
@@ -1136,7 +1149,8 @@ edit.addEventListener("blur", () => { if (editOn) closeEdit(true); });
 /* 输入桥回来的字 */
 if (window.wgt.onImeText) {
   window.wgt.onImeText((v) => {
-    edit.value = String(v == null ? "" : v).replace(/[^\d]/g, "").slice(0, 2);
+    /* 放行冒号和时间单位，否则 3:30 / 45s 打不进去 */
+    edit.value = String(v == null ? "" : v).replace(/[^\d:：sSmM分秒]/g, "").slice(0, 8);
   });
   window.wgt.onImeCommit(() => closeEdit(true));
   window.wgt.onImeCancel(() => { edit.value = ""; closeEdit(false); });
@@ -1157,8 +1171,11 @@ window.addEventListener("mousedown", (e) => {
   if (e.target.closest(NO_DRAG)) return;
   /* 分界线左边：不搬窗口，改成拨轮（运行中不能调，仍按搬窗口处理） */
   if (e.clientX <= RULER_X && mode !== "run") {
-    scrub = { y: e.clientY };
+    scrub = { base: e.clientY };
     document.body.classList.add("scrubbing");
+    cardEl.classList.add("rolling");          /* 外围格淡出，位移时不露错位 */
+    $("numBand").style.transition = "none";   /* 拖动期间要 1:1 跟手 */
+    $("tickBand").style.transition = "none";
     return;
   }
   pressing = true;
@@ -1166,19 +1183,36 @@ window.addEventListener("mousedown", (e) => {
   try { window.wgt.dragBegin(); } catch (er) {}
 }, true);
 
-/* 拨轮：鼠标跟着手走，每跨过一格的高度就拨一格（和滚轮同一个 rollTo，
-   所以数字、刻度、液位、咔哒声全部同拍） */
+/* 拨轮：数字带直接跟着鼠标走（不是一格一格跳），跨过一格才落定一个值。
+   之前只做"跨一格才动一次"，中间那段完全不动，手感是"不跟手"。 */
+function scrubCommit(dir) {
+  tickSound(dir);
+  setMinutes(wrapMin(minutes + dir));
+  const band = $("numBand"), tick = $("tickBand");
+  band.style.transform = "";        /* 文字已经换了一批，带子回到原位 */
+  tick.style.transform = "";
+}
+
 window.addEventListener("mousemove", (e) => {
   if (!scrub) return;
-  let dy = e.clientY - scrub.y;
-  while (dy <= -SLOT_PX) { scrub.y -= SLOT_PX; rollTo(1, wrapMin(curValue() + 1), false); dy = e.clientY - scrub.y; }
-  while (dy >= SLOT_PX) { scrub.y += SLOT_PX; rollTo(-1, wrapMin(curValue() - 1), false); dy = e.clientY - scrub.y; }
+  let dy = e.clientY - scrub.base;
+  while (dy <= -SLOT_PX) { scrub.base -= SLOT_PX; scrubCommit(1); dy = e.clientY - scrub.base; }
+  while (dy >= SLOT_PX) { scrub.base += SLOT_PX; scrubCommit(-1); dy = e.clientY - scrub.base; }
+  const band = $("numBand"), tick = $("tickBand");
+  band.style.transform = "translateY(" + dy + "px)";
+  tick.style.transform = "translateY(" + dy + "px)";
 });
 
 const endScrub = () => {
   if (!scrub) return;
   scrub = null;
   document.body.classList.remove("scrubbing");
+  const band = $("numBand"), tick = $("tickBand");
+  band.style.transition = "";       /* 恢复过渡，让带子自己滑回 0 */
+  tick.style.transition = "";
+  band.style.transform = "";
+  tick.style.transform = "";
+  cardEl.classList.remove("rolling");
 };
 window.addEventListener("mouseup", endScrub);
 window.addEventListener("blur", endScrub);
