@@ -1037,14 +1037,40 @@ function flashTip(msg) {
   tipTimer = setTimeout(() => el.classList.remove("on"), 2000);
 }
 
-/* ================= 交互：滚轮 ================= */
+/* ================= 交互：滚轮 / 触控板双指 =================
+   鼠标滚轮一格大约 deltaY = ±100；触控板双指是一帧几个像素、连续几十个事件。
+   所以不能"收到 deltaY 就滚一格"——那样双指一划会瞬间冲过几十格。
+   改成累加：攒够 WHEEL_STEP 才落一格，停下 220ms 就把余量清零。 */
+const WHEEL_STEP = 46;          /* 攒够这么多像素 = 一格（鼠标一格约 100，够灵敏） */
+let wheelAcc = 0, wheelTimer = 0;
+
+function wheelUnit(e) {
+  /* deltaMode: 0=像素 1=行 2=页，统一换算成像素 */
+  if (e.deltaMode === 1) return e.deltaY * 16;
+  if (e.deltaMode === 2) return e.deltaY * 400;
+  return e.deltaY;
+}
+
 cardEl.addEventListener("wheel", (e) => {
   e.preventDefault();
   if (mode === "run") return;                 /* 跑着的时候不调，先暂停 */
   if (alarmOn) { stopAlarm(); setMinutes(minutes); return; }
-  /* 方向：往下滚（deltaY > 0）是 0→1→2… 递增（用户要求，和常见滚轮相反） */
-  const d = e.deltaY > 0 ? 1 : -1;
-  rollTo(d, wrapMin(curValue() + d), false);
+
+  const d = wheelUnit(e);
+  /* 反向就先清掉余量，别让"先往上一点再往下"抵账 */
+  if ((wheelAcc > 0 && d < 0) || (wheelAcc < 0 && d > 0)) wheelAcc = 0;
+  wheelAcc += d;
+
+  clearTimeout(wheelTimer);
+  wheelTimer = setTimeout(() => { wheelAcc = 0; }, 220);
+
+  while (Math.abs(wheelAcc) >= WHEEL_STEP) {
+    /* 方向：往下滚（deltaY > 0）是 0→1→2… 递增（用户要求，和常见滚轮相反） */
+    const dir = wheelAcc > 0 ? 1 : -1;
+    wheelAcc = 0;             /* 落一格就清零，避免余量越攒越多、越滚越快 */
+    rollTo(dir, wrapMin(curValue() + dir), false);
+    break;                    /* 一个事件最多落一格，连续事件下一帧继续 */
+  }
 }, { passive: false });
 
 /* ================= 单位切换（走右键菜单） =================
