@@ -277,6 +277,28 @@
   .hint.on{ opacity:1; }
   body.light .hint{ color:rgba(0,0,0,.42); }
 
+  /* 四角缩放热区：平时看不见，鼠标上来给一点提示 */
+  .rz{
+    /* 34x34：22 太小，圆角半径 30 会把外侧削掉，剩下能点的只有一小块 */
+    position:absolute; width:34px; height:34px; z-index:7;
+    cursor:nwse-resize;
+  }
+  .rz-tl{ left:0; top:0; }
+  .rz-br{ right:0; bottom:0; }
+  .rz-tr{ right:0; top:0; cursor:nesw-resize; }
+  .rz-bl{ left:0; bottom:0; cursor:nesw-resize; }
+  /* 角上的小弧线提示（只在悬停时出现） */
+  .rz::after{
+    content:""; position:absolute; width:10px; height:10px;
+    opacity:0; transition:opacity .15s ease;
+  }
+  .rz-tl::after{ left:3px; top:3px; border-left:2px solid rgba(255,255,255,.55); border-top:2px solid rgba(255,255,255,.55); border-radius:3px 0 0 0; }
+  .rz-br::after{ right:3px; bottom:3px; border-right:2px solid rgba(255,255,255,.55); border-bottom:2px solid rgba(255,255,255,.55); border-radius:0 0 3px 0; }
+  .rz-tr::after{ right:3px; top:3px; border-right:2px solid rgba(255,255,255,.55); border-top:2px solid rgba(255,255,255,.55); border-radius:0 3px 0 0; }
+  .rz-bl::after{ left:3px; bottom:3px; border-left:2px solid rgba(255,255,255,.55); border-bottom:2px solid rgba(255,255,255,.55); border-radius:0 0 0 3px; }
+  .rz:hover::after{ opacity:1; }
+  body.light .rz::after{ border-color:rgba(0,0,0,.35); }
+
   /* 到点之后："已过 3 分" —— 声音停了以后，这是唯一还在动的信息 */
   .since{
     position:absolute; left:0; right:0; top:64%; z-index:5;
@@ -544,6 +566,11 @@
 
   <div class="hint" id="hint">滚轮调时间 · 双击输入</div>
 
+  <i class="rz rz-tl" data-c="tl"></i>
+  <i class="rz rz-tr" data-c="tr"></i>
+  <i class="rz rz-bl" data-c="bl"></i>
+  <i class="rz rz-br" data-c="br"></i>
+
   <div class="since" id="since"></div>
 
   <div class="tip" id="tip"></div>
@@ -594,7 +621,8 @@ if (!window.wgt) {
     onBackdrop: on, onBdFull: on, onBdPos: on, onBdDragEnd: on, onShowLook: on, onPreset: on,
     onImeText: on, onImeCommit: on, onImeCancel: on, onImeBlur: on,
     onReset: on, onHint: on, onTheme: on, theme: "dark",
-    setSound: noop, onShowSound: on,
+    setSound: noop, onShowSound: on, resizeBegin: noop, resizeEnd: noop,
+    editing: noop, onCommitEdit: on,
     dismiss: noop, onResume: on, onDismiss: on,
     getSound: () => Promise.resolve({ mute:false, loop:true, name:"a-dingdong" }),
     onSound: on, onPreview: on,
@@ -1194,6 +1222,9 @@ function openEdit() {
   edit.select();
   const r = edit.getBoundingClientRect();
   try { window.wgt.imeBegin({ x: r.left, y: r.top, w: r.width, h: r.height, value: edit.value }); } catch (e) {}
+  /* 告诉主进程"正在改时间"：桌面层里点桌面不会让窗口失焦，
+     页面收不到那个点击，只能让主进程代听，然后回一条 commit-edit */
+  try { window.wgt.editing(true); } catch (e) {}
 }
 
 function closeEdit(commit) {
@@ -1202,6 +1233,7 @@ function closeEdit(commit) {
   edit.classList.remove("on");
   $("n0").style.visibility = "";
   try { window.wgt.imeEnd(); } catch (e) {}
+  try { window.wgt.editing(false); } catch (e) {}
   if (commit) applyTyped(edit.value);
   render();
 }
@@ -1229,10 +1261,24 @@ if (window.wgt.onImeText) {
   window.wgt.onImeBlur(() => { if (editOn) closeEdit(true); });
 }
 
+/* ================= 交互：四角缩放 =================
+   只改窗口尺寸 + zoomFactor（等比），布局不用重算。 */
+document.querySelectorAll(".rz").forEach((el) => {
+  el.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try { window.wgt.resizeBegin(el.dataset.c); } catch (er) {}
+  });
+});
+const endResize = () => { try { window.wgt.resizeEnd(); } catch (e) {} };
+window.addEventListener("mouseup", endResize);
+window.addEventListener("blur", endResize);
+
 /* ================= 交互：拖动窗口 =================
    按住卡片空白处拖（按钮/输入框/面板除外）。位移由主进程跟系统光标算，
    页面只报"按下/松开"。 */
-const NO_DRAG = "button, input, .panel";
+const NO_DRAG = "button, input, .panel, .rz";
 /* 竖线（分界线）的 x：它左边是"数字那一列"，按住上下拖 = 拨轮调时间 */
 const RULER_X = 97;
 let pressing = false;
@@ -1421,6 +1467,9 @@ if (window.wgt.onResume) {
 }
 
 /* 用户点了系统通知：收掉红闪和声音 */
+/* 点桌面空白 = 确定（不用按回车） */
+if (window.wgt.onCommitEdit) window.wgt.onCommitEdit(() => { if (editOn) closeEdit(true); });
+
 if (window.wgt.onDismiss) {
   window.wgt.onDismiss(() => { stopAlarm(); setMinutes(minutes); });
 }

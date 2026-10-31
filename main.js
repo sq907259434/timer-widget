@@ -19,6 +19,14 @@ const createBackdrop = require("./backdrop");
    主区在 374 的窗口里仍有 117px，内容（大温度+描述+范围）约 101px，不挤。 */
 const CARD_W = 260;
 const CARD_H = 240;
+/* 四角拖拽缩放：只做等比，页面用 zoomFactor 整体放大，布局不用重算 */
+const SCALE_MIN = 0.7, SCALE_MAX = 2.2;
+
+function readScale() {
+  const v = Number(readState().scale);
+  if (!Number.isFinite(v)) return 1;
+  return Math.min(SCALE_MAX, Math.max(SCALE_MIN, v));
+}
 
 /* Windows 11 22H2+ 才有原生 acrylic。有就用系统磨砂（实时、真实模糊窗口背后的桌面）；
    没有就退回半透明渐变。 */
@@ -191,6 +199,9 @@ const _drg = (() => {
 const WDA_EXCLUDE = 0x11;   /* WDA_EXCLUDEFROMCAPTURE：对屏幕捕获隐身、照常显示 */
 
 const SWP_DRAG = 0x0001 | 0x0004 | 0x0010;   /* NOSIZE | NOZORDER | NOACTIVATE */
+/* 缩放不能用 SWP_DRAG：它带 SWP_NOSIZE，宽高会被忽略，
+   结果只有 zoomFactor 变了、窗口没变 → 卡片被裁掉一圈（实测踩过）。 */
+const SWP_RESIZE = 0x0004 | 0x0010;          /* NOZORDER | NOACTIVATE */
 const DRAG_THRESHOLD = 4;                    /* 物理像素，手抖不算拖 */
 
 function hwndNum(win) {
@@ -342,6 +353,8 @@ function scheduleSnapshot(delay, reason) {
 
 let _clickSnap = 0, _wpStamp = 0;
 
+let editingNow = false;   /* 页面正在双击改时间 */
+
 function startDesktopWatch() {
   if (!_drg) return;
   _wpStamp = wallpaperStamp();
@@ -357,6 +370,13 @@ function startDesktopWatch() {
     const p = screen.getCursorScreenPoint(), b = w.getBounds();
     if (p.x >= b.x && p.x < b.x + b.width && p.y >= b.y && p.y < b.y + b.height) return;
     if (!fgIsDesktop()) return;
+    /* 正在改时间时，点桌面空白 = "确定"（桌面层里窗口不会失焦，
+       页面自己收不到这个点击，只能主进程代听） */
+    if (editingNow) {
+      editingNow = false;
+      try { w.webContents.send("timer:commit-edit"); } catch (e) {}
+      return;
+    }
     const now = Date.now();
     if (now - _clickSnap < 60000) return;
     _clickSnap = now;
@@ -430,6 +450,59 @@ function applyCardRegion(w, force) {
       m, m, W - m + 1, H - m + 1, rad, rad));
     if (hrgn) _rgn.SetWindowRgn(hwndOf(w), hrgn, true);
   } catch (e) {}
+}
+
+/* ================= 四角拖拽缩放 =================
+   只做等比：页面用 zoomFactor 整体放大，所以布局、圆角、字号都不用重算。
+   角在右边 → 宽度跟着光标走；角在左边 → 左边界跟着走、宽高反算。
+   高度永远按 CARD_H/CARD_W 的比例算，避免拉扁变形。 */
+function resizeStop(w) {
+  if (!w || !w.__rz) return;
+  clearInterval(w.__rz.timer);
+  w.__rz = null;
+  try { patchState({ scale: w.webContents.getZoomFactor() }); } catch (e) {}
+}
+
+function resizeBegin(w, corner) {
+  resizeStop(w);
+  if (!_drg) return;
+  const hwnd = hwndNum(w);
+  const cb = Buffer.alloc(8), rb = Buffer.alloc(16);
+  if (!hwnd || !_drg.GetCursorPos(cb) || !_drg.GetWindowRect(hwnd, rb)) return;
+
+  let dpi = 1;
+  try { dpi = screen.getDisplayMatching(w.getBounds()).scaleFactor || 1; } catch (e) {}
+  const baseW = CARD_W * dpi;          /* 物理像素下的 1 倍宽 */
+
+  const st = {
+    hwnd, corner,
+    ox: rb.readInt32LE(0), oy: rb.readInt32LE(4),
+    ow: rb.readInt32LE(8) - rb.readInt32LE(0),
+    oh: rb.readInt32LE(12) - rb.readInt32LE(4),
+    cx: cb.readInt32LE(0), cy: cb.readInt32LE(4),
+    baseW, timer: null,
+  };
+  w.__rz = st;
+  st.timer = setInterval(() => {
+    if (w.isDestroyed()) { resizeStop(w); return; }
+    if ((_drg.GetAsyncKeyState(0x01) & 0x8000) === 0) { resizeStop(w); return; }
+    const c = Buffer.alloc(8);
+    if (!_drg.GetCursorPos(c)) return;
+    const dx = c.readInt32LE(0) - st.cx;
+    const right = corner === "tr" || corner === "br";
+    const bottom = corner === "bl" || corner === "br";
+    let W = Math.round(st.ow + (right ? dx : -dx));
+    const k = Math.min(SCALE_MAX, Math.max(SCALE_MIN, W / st.baseW));
+    W = Math.round(st.baseW * k);
+    const H = Math.round(baseW * (CARD_H / CARD_W) * k);
+    const nx = right ? st.ox : st.ox + (st.ow - W);
+    const ny = bottom ? st.oy : st.oy + (st.oh - H);
+    try {
+      _drg.SetWindowPos(st.hwnd, 0, nx, ny, W, H, SWP_RESIZE);
+      w.webContents.setZoomFactor(k);
+      applyCardRegion(w, true);
+    } catch (e) {}
+  }, 16);
 }
 
 function dragBegin(w) {
@@ -646,7 +719,7 @@ function createWindow() {
     return cardWin;
   }
 
-  const z = 1;
+  const z = readScale();
   const WIN_W = Math.round((CARD_W + PAD * 2) * z);
   const WIN_H = Math.round((CARD_H + PAD * 2) * z);
 
@@ -708,7 +781,7 @@ function createWindow() {
         "--wgt-theme=" + resolvedTheme(),
       ],
       backgroundThrottling: false, // 后台不降频，否则切走再回来数字是旧的
-      zoomFactor: 1,
+      zoomFactor: z,
     },
   });
 
@@ -1218,6 +1291,15 @@ app.whenReady().then(() => {
     dragBegin(w);
   });
 
+  ipcMain.on("wgt:resize-begin", (e, corner) => {
+    const w = senderWin(e);
+    if (w) resizeBegin(w, String(corner || "br"));
+  });
+  ipcMain.on("wgt:resize-end", (e) => {
+    const w = senderWin(e);
+    if (w) resizeStop(w);
+  });
+
   ipcMain.on("wgt:drag-end", (e) => {
     const w = senderWin(e);
     if (!w || w.isDestroyed()) return;
@@ -1225,6 +1307,7 @@ app.whenReady().then(() => {
   });
 
   /* ---------- 桌面快照背景 + 外观（透明度/磨砂，与待办卡同款） ---------- */
+  ipcMain.on("wgt:editing", (_e, on) => { editingNow = !!on; });
   ipcMain.handle("wgt:get-sound", () => soundCfg());
   ipcMain.on("wgt:set-sound", (_e, name) => {
     if (!ALARM_SOUNDS.some(([id]) => id === name)) return;

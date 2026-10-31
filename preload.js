@@ -22,6 +22,12 @@ contextBridge.exposeInMainWorld("wgt", {
      在子窗口上不生效，所以整条拖动自己实现。 */
   dragBegin: () => ipcRenderer.send("wgt:drag-begin"),
   dragEnd: () => ipcRenderer.send("wgt:drag-end"),
+  /* 四角缩放：只报"从哪个角开始/结束"，尺寸由主进程跟光标算 */
+  resizeBegin: (corner) => ipcRenderer.send("wgt:resize-begin", corner),
+  resizeEnd: () => ipcRenderer.send("wgt:resize-end"),
+  /* 正在双击改时间 → 主进程据此把"点桌面"当成确定 */
+  editing: (on) => ipcRenderer.send("wgt:editing", !!on),
+  onCommitEdit: (fn) => ipcRenderer.on("timer:commit-edit", () => fn()),
   /* 桌面快照背景：主进程裁好一块"卡片底下的桌面"推过来 */
   backdropNow: () => ipcRenderer.invoke("wgt:backdrop-now"),
   onBackdrop: (fn) => ipcRenderer.on("wgt:backdrop", (_e, p) => fn(p || {})),
