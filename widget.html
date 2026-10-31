@@ -1418,13 +1418,17 @@ if (window.wgt.onImeText) {
 /* 简洁界面左上角的返回箭头 → 回到设定界面（计时仍停着，可以继续调时间） */
 $("back").addEventListener("click", () => {
   /* 返回 = 放弃这次计时，直接回到默认设定 ——
-     不把"还剩多少"带回去（否则再点播放会从半截继续，容易误会）。 */
+     不把"还剩多少"带回去（否则再点播放会从半截继续，容易误会）。
+     横版里返回要先切回方形：滚轮那套槽位是按 260x240 排的，横条装不下。 */
   if (raf) { cancelAnimationFrame(raf); raf = null; }
   mode = "idle";
   view = "set";
   runStartAt = 0;
   stopAlarm();
   remain = totalSeconds() * 1000;   /* 剩余量回到设定值 */
+  if (document.body.classList.contains("wide")) {
+    try { window.wgt.setLayout("full"); } catch (e) {}
+  }
   render();
   saveRun();
 });
