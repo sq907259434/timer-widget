@@ -30,12 +30,20 @@
 
   /* 桌面快照背景：真透明在桌面层里只透壁纸、透不出图标，所以垫一张快照 */
   #bd{
+    /* 圆角要和 .card 一致：卡片不透明时（alpha=1），窗口边缘那 1px 会漏出
+       这层模糊过的桌面快照，看起来就是一圈"白边"。裁掉它就没有了。 */
+    border-radius:30px;
     position:absolute; inset:0; z-index:0; pointer-events:none;
     background-size:100% 100%; background-repeat:no-repeat;
     opacity:0; transition:opacity .25s ease;
     filter:blur(var(--frost));
   }
   body.has-bd #bd{ opacity:1; }
+  /* 真透明模式：不画桌面快照，让系统真实混合后面的窗口 */
+  body.noreg #bd{ display:none; }
+  /* 卡片完全不透明时，这层快照本来就看不见，但 blur 出来的光晕会从圆角外侧
+     漏出一圈浅色边 —— 直接不画它。 */
+  body.opaque #bd{ display:none; }
 
   .card{
     position:absolute; inset:0;
@@ -49,9 +57,11 @@
       color-mix(in srgb, var(--g1) calc(var(--a) * 100%), transparent) 0%,
       color-mix(in srgb, var(--g2) calc(var(--a) * 100%), transparent) 46%,
       color-mix(in srgb, var(--g3) calc(var(--a) * 100%), transparent) 100%);
+    /* 近黑底上，.13 的顶部高光和 .07 的描边会显成一条明显的白边
+       （实测边缘 89 灰、卡片内只有 44）——压到几乎看不出为止。 */
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,.13),
-      inset 0 0 0 1px rgba(255,255,255,.07),
+      inset 0 1px 0 rgba(255,255,255,.05),
+      inset 0 0 0 1px rgba(255,255,255,.04),
       inset 0 0 70px rgba(0,0,0,.45);
   }
   /* 顶部一层极淡的高光，让卡片"立"起来 */
@@ -1528,12 +1538,17 @@ function applyLook() {
   const r = document.documentElement.style;
   r.setProperty("--a", String(LOOK.alpha));
   r.setProperty("--frost", LOOK.frost + "px");
+  /* 不透明（alpha≈1）时把桌面快照整层关掉，避免圆角外那圈模糊光晕 */
+  document.body.classList.toggle("opaque", LOOK.alpha >= 0.995);
 }
 function setLook(v) {
   if (!v) return;
   if (Number.isFinite(v.alpha)) LOOK.alpha = Math.min(1, Math.max(0.08, v.alpha));
   if (Number.isFinite(v.frost)) LOOK.frost = Math.min(20, Math.max(0, v.frost));
   applyLook();
+}
+if (window.wgt.onNoReg) {
+  window.wgt.onNoReg((v) => document.body.classList.toggle("noreg", v));
 }
 if (window.wgt.onLook) window.wgt.onLook(setLook);
 if (window.wgt.getLook) {

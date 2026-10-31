@@ -40,6 +40,8 @@ contextBridge.exposeInMainWorld("wgt", {
   onShowLook: (fn) => ipcRenderer.on("wgt:show-look", () => fn()),
   /* 外观浮窗改了值 → 卡片跟着更新 */
   onLook: (fn) => ipcRenderer.on("wgt:look", (_e, v) => fn(v || {})),
+  /* 真透明模式：页面据此关掉桌面快照层，让真实背景透上来 */
+  onNoReg: (fn) => ipcRenderer.on("wgt:noreg", (_e, v) => fn(!!v)),
   /* 卡片上的图钉：钉在最前面 */
   getTop: () => ipcRenderer.invoke("wgt:get-top"),
   toggleTop: () => ipcRenderer.send("wgt:toggle-top"),
