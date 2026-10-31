@@ -19,6 +19,10 @@ const createBackdrop = require("./backdrop");
    主区在 374 的窗口里仍有 117px，内容（大温度+描述+范围）约 101px，不挤。 */
 const CARD_W = 260;
 const CARD_H = 240;
+/* 迷你横条：修图时挂在画面上方，只留"剩余时间 + 一条进度"，不挡视线 */
+const MINI_W = 260, MINI_H = 124, MINI_RAD = 22;
+function layoutIsMini() { return readState().layout === "mini"; }
+function cardSize() { return layoutIsMini() ? { w: MINI_W, h: MINI_H } : { w: CARD_W, h: CARD_H }; }
 /* 四角拖拽缩放：只做等比，页面用 zoomFactor 整体放大，布局不用重算 */
 const SCALE_MIN = 0.7, SCALE_MAX = 2.2;
 
@@ -418,6 +422,26 @@ const _rgn = (() => {
   } catch (e) { return null; }
 })();
 
+/* 切换 完整 / 迷你：改窗口尺寸 + 圆角区域 + 通知页面换样式。
+   不重启，切完立刻生效。 */
+function applyLayout(w) {
+  if (!w || w.isDestroyed()) return;
+  const CS = cardSize();
+  const b = w.getBounds();
+  let dpi = 1;
+  try { dpi = screen.getDisplayMatching(b).scaleFactor || 1; } catch (e) {}
+  const z = readScale();
+  const nw = Math.round((CS.w + PAD * 2) * z);
+  const nh = Math.round((CS.h + PAD * 2) * z);
+  try {
+    w.setBounds({ x: b.x, y: b.y, width: nw, height: nh });
+    w.webContents.setZoomFactor(z);
+    w.webContents.send("wgt:layout", layoutIsMini() ? "mini" : "full");
+    applyCardRegion(w, true);
+    pushBackdrop(160);
+  } catch (e) {}
+}
+
 function applyCardRegion(w, force) {
   /* 真透明：不设窗口区域。前提是窗口以 transparent:true 创建（见 USE_ACRYLIC），
      否则不透明的窗口会在四角露出直角。 */
@@ -456,7 +480,7 @@ function applyCardRegion(w, force) {
   /* ★ 必须和 CSS 里 .card 的 border-radius 一致（现在是 30px）。
      之前写的是 24：窗口区域比卡片更"方"，四个角就会露出卡片没画到的那一小块，
      看起来就是"边角多出四个角"。改圆角时这两处要一起改。 */
-  const rad = Math.max(2, Math.round(30 * s));
+  const rad = Math.max(2, Math.round((layoutIsMini() ? MINI_RAD : 30) * s));
   let hrgn = 0;
   try {
     /* ★ 最后两个参数是"椭圆的长和宽"，不是半径 —— 圆角半径 = 这个值 / 2。
@@ -810,12 +834,13 @@ function createWindow() {
   }
 
   const z = readScale();
+  const CS = cardSize();
   try {
     fs.appendFileSync(path.join(app.getPath("userData"), "win-events.log"),
       new Date().toISOString() + ` scale resolved=${z} raw=${JSON.stringify(readState().scale)}\n`);
   } catch (e) {}
-  const WIN_W = Math.round((CARD_W + PAD * 2) * z);
-  const WIN_H = Math.round((CARD_H + PAD * 2) * z);
+  const WIN_W = Math.round((CS.w + PAD * 2) * z);
+  const WIN_H = Math.round((CS.h + PAD * 2) * z);
 
   const st = readState();
   const wa = screen.getPrimaryDisplay().workArea;
@@ -1416,6 +1441,14 @@ app.whenReady().then(() => {
   ipcMain.on("wgt:close-look", () => closeLookWin());
   /* 卡片上的图钉：读当前状态 / 切换 */
   ipcMain.handle("wgt:get-top", () => readState().top === true);
+  ipcMain.handle("wgt:get-layout", () => (layoutIsMini() ? "mini" : "full"));
+  /* 页面按"运行 / 停止"自动要求切布局：跑起来收成横条，停下弹回大卡 */
+  ipcMain.on("wgt:set-layout", (e, v) => {
+    const want = v === "mini" ? "mini" : "full";
+    if ((want === "mini") === layoutIsMini()) return;   /* 没变就不折腾窗口 */
+    patchState({ layout: want });
+    applyLayout(senderWin(e) || cardWin);
+  });
   ipcMain.on("wgt:toggle-top", (e) => {
     const w = senderWin(e) || cardWin;
     setTopState(w, !(readState().top === true));
