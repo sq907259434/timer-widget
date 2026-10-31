@@ -460,7 +460,12 @@ function resizeStop(w) {
   if (!w || !w.__rz) return;
   clearInterval(w.__rz.timer);
   w.__rz = null;
-  try { patchState({ scale: w.webContents.getZoomFactor() }); } catch (e) {}
+  try {
+    const z = w.webContents.getZoomFactor();
+    /* 进程被强杀时 getZoomFactor() 可能返回 0，直接存会把下次启动缩到最小
+       （readScale 会把它 clamp 成 0.7，用户会看到卡片莫名变小） */
+    if (Number.isFinite(z) && z >= SCALE_MIN - 0.001) patchState({ scale: z });
+  } catch (e) {}
 }
 
 function resizeBegin(w, corner) {
