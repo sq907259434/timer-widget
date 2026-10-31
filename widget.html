@@ -277,6 +277,23 @@
   .hint.on{ opacity:1; }
   body.light .hint{ color:rgba(0,0,0,.42); }
 
+  /* 悬停出现的小叉：不用再右键找"退出" */
+  .xclose{
+    position:absolute; right:44px; top:10px; z-index:8;
+    width:22px; height:22px; padding:0; border:0; border-radius:50%;
+    background:rgba(255,255,255,.08);
+    color:rgba(255,255,255,.7);
+    display:grid; place-items:center;
+    cursor:pointer;
+    opacity:0; transform:scale(.9);
+    transition:opacity .16s ease, transform .16s ease, background .16s ease, color .16s ease;
+  }
+  .xclose svg{ width:11px; height:11px; }
+  .card:hover .xclose{ opacity:1; transform:none; }
+  .xclose:hover{ background:rgba(255,90,90,.85); color:#fff; }
+  body.light .xclose{ background:rgba(0,0,0,.07); color:rgba(0,0,0,.55); }
+  body.light .xclose:hover{ background:#E8564E; color:#fff; }
+
   /* 四角缩放热区：平时看不见，鼠标上来给一点提示 */
   .rz{
     /* 34x34：22 太小，圆角半径 30 会把外侧削掉，剩下能点的只有一小块 */
@@ -565,6 +582,12 @@
   <div class="ind"><i class="dot"></i><i class="bar"></i></div>
 
   <div class="hint" id="hint">滚轮调时间 · 双击输入</div>
+
+  <button class="xclose" id="xclose" title="退出">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+      <path d="M6 6l12 12M18 6L6 18"/>
+    </svg>
+  </button>
 
   <i class="rz rz-tl" data-c="tl"></i>
   <i class="rz rz-tr" data-c="tr"></i>
@@ -1260,6 +1283,11 @@ if (window.wgt.onImeText) {
   window.wgt.onImeCancel(() => { edit.value = ""; closeEdit(false); });
   window.wgt.onImeBlur(() => { if (editOn) closeEdit(true); });
 }
+
+/* 小叉：退出（和右键菜单的"退出"同一条路） */
+$("xclose").addEventListener("click", () => {
+  try { window.wgt.close(); } catch (e) {}
+});
 
 /* ================= 交互：四角缩放 =================
    只改窗口尺寸 + zoomFactor（等比），布局不用重算。 */
