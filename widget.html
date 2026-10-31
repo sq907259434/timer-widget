@@ -1341,6 +1341,9 @@ function doReset() {
   resetArm = 0;
   $("reset").classList.remove("arm");
   if (raf) { cancelAnimationFrame(raf); raf = null; }
+  /* ★ 这一段是"先回 idle 再 start"：中间那次 render 会被 ensureSquareWhenIdle
+     判定成"空闲"，把横版切回方形（用户报的"点再来一次就变回方形"）。 */
+  skipSquareGuard = true;
   mode = "idle";
   view = "set";
   runStartAt = 0;
@@ -1349,6 +1352,7 @@ function doReset() {
   /* 「再来一次」= 直接重开一轮，不用再点播放。
      想改时长就走左上角返回箭头回到设定界面。 */
   if (minutes > 0) start();
+  skipSquareGuard = false;
 }
 $("reset").addEventListener("click", doReset);
 /* 右键菜单「重置计时」 */
@@ -1447,9 +1451,13 @@ document.addEventListener("mousedown", (e) => {
   if ($("sndPanel").classList.contains("on") && !e.target.closest("#sndPanel")) $("sndPanel").classList.remove("on");
 }, true);
 
+/* 「再来一次」内部会先回 idle 再 start，那一瞬不该被当成"空闲"切回方形 */
+let skipSquareGuard = false;
+
 /* 设置界面只保留方形：横版只用于"倒计时中"。
    否则存档停在横版时重启，滚轮会被塞进 213x93 的横条里。 */
 function ensureSquareWhenIdle() {
+  if (skipSquareGuard) return;          /* 「再来一次」中间那一瞬不算空闲 */
   if (!document.body.classList.contains("wide")) return;
   const running = mode === "run" || mode === "pause" || cardEl.classList.contains("alarm");
   if (!running) { try { window.wgt.setLayout("full"); } catch (e) {} }
