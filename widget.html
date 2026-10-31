@@ -94,6 +94,8 @@
   /* 竖向标尺：一条极淡的竖线 + 每格一道短刻度（参考图里那根） */
   /* 竖线不是均匀的：中间最亮，往两端渐隐（参考图里那根"凹槽"） */
   .ruler{
+    /* 跟着卡片透明度一起变淡：不然整张卡半透明、这两根柱子还全亮，很扎眼 */
+    opacity:var(--a);
     position:absolute; left:97px; top:0; bottom:0; width:3px; z-index:2;
     background:linear-gradient(to bottom,
       rgba(255,255,255,.055) 0%,
@@ -116,7 +118,7 @@
     transition:opacity .26s ease, height .15s cubic-bezier(.22,.7,.25,1);
   }
   /* 默认态（0 分钟）没有液位：整条竖线是灰的。设了时间才亮起来 */
-  .card.filled .ruler-fill{ opacity:1; }
+  .card.filled .ruler-fill{ opacity:var(--a); }
   .ticks i{
     position:absolute; left:132px; height:4px; border-radius:2px;
     background:rgba(255,255,255,.32); z-index:2;
@@ -159,7 +161,9 @@
   .card.rolling .ticks i.t2,  .card.rolling .ticks i.t3{ opacity:0; }
 
   /* 中心指示：小圆点 + 红线 */
-  .ind{ position:absolute; left:0; top:50%; width:100%; height:0; z-index:3; pointer-events:none; }
+  /* 圆点和红条也跟透明度走 */
+  .ind{ position:absolute; left:0; top:50%; width:100%; height:0; z-index:3; pointer-events:none;
+        opacity:var(--a); }
   .ind .dot{
     position:absolute; left:89px; top:-9.5px; width:19px; height:19px; border-radius:50%;
     background:radial-gradient(circle at 38% 34%, #ffffff 0%, #f0f0f0 52%, #b5b5b5 100%);
@@ -281,6 +285,23 @@
   .hint.on{ opacity:1; }
   body.light .hint{ color:rgba(0,0,0,.42); }
 
+  /* 简洁界面左上角的返回箭头：点了回到设定界面 */
+  .back{
+    position:absolute; left:12px; top:12px; z-index:8;
+    width:26px; height:26px; padding:0; border:0; border-radius:50%;
+    background:rgba(255,255,255,.08);
+    color:rgba(255,255,255,.75);
+    display:grid; place-items:center;
+    cursor:pointer;
+    opacity:0; transform:translateX(-3px);
+    transition:opacity .16s ease, transform .16s ease, background .16s ease;
+  }
+  .back svg{ width:13px; height:13px; }
+  .card.mini:hover .back{ opacity:1; transform:none; }
+  .back:hover{ background:rgba(255,255,255,.18); color:#fff; }
+  body.light .back{ background:rgba(0,0,0,.07); color:rgba(0,0,0,.6); }
+  body.light .back:hover{ background:rgba(0,0,0,.14); color:#111; }
+
   /* 悬停出现的小叉：不用再右键找"退出" */
   .xclose{
     /* 右/上等距 = 落在 45° 对角线上，和圆角弧线同一条线 */
@@ -347,17 +368,31 @@
 
   /* ============ 运行态：大数字换成 mm:ss ============ */
   .card.run .num:not(.s0){ opacity:0; }
-  /* 运行态：只留数字。圆点、竖线、橙色段、刻度全部收掉 ——
-     这些是"设定时间"时的操作提示，跑起来之后只是干扰，
-     而且会把本来能放大的数字挤到一边。 */
-  .card.run .wheel{ width:100%; }
+  /* 运行态：界面不变（滚轮 + 刻度 + 竖线 + 红条都留着），
+     只有中心那个数字变成 mm:ss 往下走 —— 不跳界面，看着才连贯。 */
   .card.run .num.s0{
-    /* 数字往上挪一点（参考图里数字偏上、按钮在下方，整体更透气） */
-    left:0; right:0; text-align:center; top:43%;
+    /* 竖线在 97px 处，mm:ss 必须整个待在它左边：28px 时 "14:59" 约 64px 宽 */
+    left:16px; right:auto; text-align:left; top:50%;
+    font-size:28px; font-weight:500; letter-spacing:0;
+    text-shadow:none;
+  }
+  .card.run .num.s0.wide{ font-size:28px; }   /* mm:ss 本来就是长的，别再降字号 */
+
+  /* 简洁界面（点停止才进来）：只留一个大数字 */
+  .card.mini .ruler,
+  .card.mini .ruler-fill,
+  .card.mini .ind,
+  .card.mini .ticks,
+  .card.mini .num:not(.s0){ opacity:0; }
+  /* 数字在 .wheel 里（只有 172 宽），不撑满整卡就居中不了 */
+  .card.mini .wheel{ width:100%; }
+  .card.mini .num.s0{
+    left:0; right:0; text-align:center; top:44%;
     font-size:70px; font-weight:600; letter-spacing:-1.5px;
+    opacity:1;                    /* 暂停态的变淡在这里不合适，这是"结果"界面 */
     text-shadow:0 0 30px rgba(255,255,255,.32), 0 0 70px rgba(255,255,255,.12);
   }
-  body.light .card.run .num.s0{ text-shadow:none; }
+  body.light .card.mini .num.s0{ text-shadow:none; }
 
   /* 运行态的按钮：暂停是红色实心，重置是深灰实心（参考图） */
   .card.run .play{
@@ -378,11 +413,6 @@
     box-shadow:inset 0 0 0 1px rgba(0,0,0,.10);
     color:#333;
   }
-  .card.run .ticks,
-  .card.run .ruler,
-  .card.run .ruler-fill,
-  .card.run .ind,
-  .card.run .unit{ opacity:0; }
   body.scrubbing{ cursor:ns-resize; }
   /* 超时态：同一位置放一句"超时 N 分"，字号要小 */
   .card.over .num.s0{ font-size:26px; font-weight:400; letter-spacing:0; }
@@ -595,6 +625,12 @@
   <i class="rz rz-bl" data-c="bl"></i>
   <i class="rz rz-br" data-c="br"></i>
 
+  <button class="back" id="back" title="返回设定">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M15 5l-7 7 7 7"/>
+    </svg>
+  </button>
+
   <button class="xclose" id="xclose" title="退出">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
       <path d="M6 6l12 12M18 6L6 18"/>
@@ -608,7 +644,7 @@
   <input class="edit" id="edit" maxlength="8" inputmode="text" spellcheck="false" autocomplete="off">
 
   <div class="btns" id="btns">
-  <button class="reset" id="reset" title="重置">
+  <button class="reset" id="reset" title="再来一次">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.5 3.6v4.2h-4.2"/>
     </svg>
@@ -825,11 +861,12 @@ function render() {
   if (mode === "run" || mode === "pause") {
     cardEl.classList.add("run");
     cardEl.classList.toggle("pause", mode === "pause");
+    cardEl.classList.toggle("mini", view === "mini" && mode === "pause");
     n0.textContent = mmss(remain);
     $("icoPlay").classList.toggle("on", mode === "pause");
     $("icoPause").classList.toggle("on", mode === "run");
   } else {
-    cardEl.classList.remove("run", "pause");
+    cardEl.classList.remove("run", "pause", "mini");
     n0.textContent = label(minutes);
     $("icoPlay").classList.add("on");
     $("icoPause").classList.remove("on");
@@ -868,6 +905,9 @@ function setMinutes(v, keepRemain) {
    回来时按 Date.now() 重算，睡多久都不会漂。 */
 const RUN_KEY = "timer_run_v1";
 let totalMs = 0;              /* 本次设定的总时长，用来算进度比例 */
+/* 运行中保持"设定界面"（滚轮+刻度），点停止才切到"简洁界面"（只有大数字）。
+   view=set 设定界面 / view=mini 简洁界面。 */
+let view = "set";
 
 function saveRun() {
   try {
@@ -883,6 +923,7 @@ function start() {
   remain = totalMs;
   endAt = Date.now() + remain;
   mode = "run";
+  view = "set";
   runStartAt = Date.now();
   stopAlarm();
   render();
@@ -894,6 +935,7 @@ function resume() {
   if (remain <= 0) { start(); return; }
   endAt = Date.now() + remain;
   mode = "run";
+  view = "set";
   runStartAt = Date.now();
   render();
   tickLoop();
@@ -903,6 +945,7 @@ function resume() {
 function pause() {
   remain = Math.max(0, endAt - Date.now());
   mode = "pause";
+  view = "mini";              /* 点停止 = 切到简洁界面看结果 */
   if (raf) { cancelAnimationFrame(raf); raf = null; }
   render();
   saveRun();
@@ -1205,7 +1248,7 @@ function doReset() {
   if (mode === "run" && elapsed > 10000 && Date.now() - resetArm > 3000) {
     resetArm = Date.now();
     $("reset").classList.add("arm");
-    flashTip("再点一次确认重置");
+    flashTip("再点一次确认重来");
     setTimeout(() => $("reset").classList.remove("arm"), 3000);
     return;
   }
@@ -1213,9 +1256,13 @@ function doReset() {
   $("reset").classList.remove("arm");
   if (raf) { cancelAnimationFrame(raf); raf = null; }
   mode = "idle";
+  view = "set";
   runStartAt = 0;
   stopAlarm();
-  setMinutes(minutes);          /* 回到设定值，重新可调 */
+  setMinutes(minutes);          /* 先回到设定值（remain = 设定时长） */
+  /* 「再来一次」= 直接重开一轮，不用再点播放。
+     想改时长就走左上角返回箭头回到设定界面。 */
+  if (minutes > 0) start();
 }
 $("reset").addEventListener("click", doReset);
 /* 右键菜单「重置计时」 */
@@ -1290,6 +1337,12 @@ if (window.wgt.onImeText) {
   window.wgt.onImeCancel(() => { edit.value = ""; closeEdit(false); });
   window.wgt.onImeBlur(() => { if (editOn) closeEdit(true); });
 }
+
+/* 简洁界面左上角的返回箭头 → 回到设定界面（计时仍停着，可以继续调时间） */
+$("back").addEventListener("click", () => {
+  view = "set";
+  render();
+});
 
 /* 小叉：退出（和右键菜单的"退出"同一条路） */
 $("xclose").addEventListener("click", () => {
