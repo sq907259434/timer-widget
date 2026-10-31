@@ -437,7 +437,7 @@
   /* 到点之后："已过 3 分" —— 声音停了以后，这是唯一还在动的信息 */
   .since{
     position:absolute; left:0; right:0; top:64%; z-index:5;
-    text-align:center; font-size:11px; letter-spacing:.5px;
+    text-align:center; font-size:13px; letter-spacing:.5px; font-weight:500;
     color:rgba(255,150,140,.9);
     opacity:0; transition:opacity .25s ease;
     pointer-events:none;
@@ -478,11 +478,26 @@
   .card.mini .wheel{ width:100%; }
   .card.mini .num.s0{
     left:0; right:0; text-align:center; top:44%;
-    font-size:70px; font-weight:600; letter-spacing:-1.5px;
-    opacity:1;                    /* 暂停态的变淡在这里不合适，这是"结果"界面 */
+    /* 平时按钮不显示，数字放到最大；鼠标移上去（或到点）再缩回 70 让位 */
+    font-size:78px; font-weight:600; letter-spacing:-1.5px;
+    opacity:1;
     text-shadow:0 0 30px rgba(255,255,255,.32), 0 0 70px rgba(255,255,255,.12);
+    transition:font-size .16s ease;
   }
+  .card.mini:hover .num.s0,
+  .card.mini.alarm .num.s0{ font-size:70px; }
   body.light .card.mini .num.s0{ text-shadow:none; }
+
+  /* 方形倒计时：按钮默认不显示（只有数字），悬停或到点才出现 */
+  .card.mini .btns{ opacity:0; transition:opacity .16s ease; }
+  .card.mini .btns .play,
+  .card.mini .btns .reset{ pointer-events:none; }
+  .card.mini:hover .btns,
+  .card.mini.alarm .btns{ opacity:1; }
+  .card.mini:hover .btns .play,
+  .card.mini:hover .btns .reset,
+  .card.mini.alarm .btns .play,
+  .card.mini.alarm .btns .reset{ pointer-events:auto; }
 
   /* 运行态的按钮：暂停是红色实心，重置是深灰实心（参考图） */
   .card.run .play{
@@ -745,7 +760,7 @@
   <i class="rz rz-bl" data-c="bl"></i>
   <i class="rz rz-br" data-c="br"></i>
 
-  <button class="rot" id="rot" title="横竖切换（暂未开放）">
+  <button class="rot" id="rot" title="横竖切换">
     <!-- 横竖屏切换：竖块 + 横条 + 箭头 -->
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
       <rect x="1.8" y="5.2" width="7.6" height="13.6" rx="2"/>
