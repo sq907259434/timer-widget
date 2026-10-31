@@ -128,7 +128,9 @@
   .ticks i.t-3{ top:calc(50% - 112px); width:8px;  background:rgba(255,255,255,.16); }
   .ticks i.t-2{ top:calc(50% - 89px);  width:11px; background:rgba(255,255,255,.22); }
   .ticks i.t-1{ top:calc(50% - 53px);  width:15px; background:rgba(255,255,255,.30); }
-  .ticks i.t0 { top:50%;               width:20px; background:rgba(255,255,255,.38); }
+  /* 中心那根刻度永远被红条盖着；不藏的话，红条尾端一渐隐它就透出来
+     （用户看到的"红条右边的小黑点"） */
+  .ticks i.t0 { top:50%; width:20px; background:rgba(255,255,255,.38); opacity:0; }
   .ticks i.t1 { top:calc(50% + 53px);  width:15px; background:rgba(255,255,255,.30); }
   .ticks i.t2 { top:calc(50% + 89px);  width:11px; background:rgba(255,255,255,.22); }
   .ticks i.t3 { top:calc(50% + 112px); width:8px;  background:rgba(255,255,255,.14); }
@@ -169,11 +171,13 @@
     box-shadow:0 0 6px rgba(255,77,77,.9);
   }
   .ind .bar{
-    position:absolute; left:112px; top:-3px; width:48px; height:6px; border-radius:3px;
-    /* 参考图那根红线是"渐隐"的，末端不能出现胶囊头：只留柔光，不加紧贴的描边光 */
-    background:linear-gradient(90deg, #FF4D4D 0%, rgba(255,77,77,.9) 45%, rgba(255,77,77,.35) 78%, rgba(255,77,77,0) 100%);
-    /* 参考图那团光是"淡淡的暖色扩散"，不是把卡片染红：只留一层柔光 */
-    box-shadow:0 0 12px rgba(255,70,70,.55), 0 0 34px 6px rgba(255,60,60,.10);
+    position:absolute; left:110px; top:-2.5px; width:54px; height:5px; border-radius:2.5px;
+    /* 实色 + 遮罩渐隐：用颜色透明度做渐隐时，末端会混成脏灰、还会把底下的刻度透出来；
+       遮罩只影响"画不画"，颜色始终是纯红，边缘干净。 */
+    background:#FF4D4D;
+    -webkit-mask-image:linear-gradient(90deg, #000 0%, #000 46%, rgba(0,0,0,.62) 74%, transparent 100%);
+            mask-image:linear-gradient(90deg, #000 0%, #000 46%, rgba(0,0,0,.62) 74%, transparent 100%);
+    box-shadow:0 0 10px rgba(255,70,70,.42), 0 0 26px 4px rgba(255,60,60,.10);
     transition:opacity .2s ease;
   }
 
@@ -516,8 +520,8 @@
   }
 
   body.light .ind .bar{
-    background:linear-gradient(90deg, #FF3B30 0%, rgba(255,59,48,.92) 45%, rgba(255,59,48,.32) 78%, rgba(255,59,48,0) 100%);
-    box-shadow:0 0 10px rgba(255,70,60,.30), 0 0 26px 4px rgba(255,70,60,.08);
+    background:#FF3B30;
+    box-shadow:0 0 9px rgba(255,70,60,.30), 0 0 22px 3px rgba(255,70,60,.07);
   }
 
   body.light .play{
