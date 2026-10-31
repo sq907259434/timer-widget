@@ -1059,10 +1059,13 @@ function startAlarm(info) {
   /* 声音交给页面放（页面有 Audio 元素，能循环、能换文件）。
      只有选"系统提示音"时这里才 beep —— 也当作页面音频失败时的兜底。 */
   if (!cfg.mute && cfg.name === "system") {
+    const startedAt = Date.now();
     const tick = () => {
       alarmBeeps++;
       try { shell.beep(); } catch (e) {}
       if (!cfg.loop && alarmBeeps >= 3) { alarmTimer = null; return; }
+      /* 封顶 2 分钟：人不在就一直响会烦；声音停，卡片继续红闪 */
+      if (Date.now() - startedAt > 120000) { alarmTimer = null; return; }
       alarmTimer = setTimeout(tick, 1200);
     };
     tick();
@@ -1100,6 +1103,7 @@ async function buildMenu() {
 
   return Menu.buildFromTemplate([
     { label: "重置计时", accelerator: "F5", click: () => cardWin && cardWin.webContents.send("timer:reset") },
+    { label: "再看一次引导", click: () => cardWin && cardWin.webContents.send("timer:hint") },
     { label: "5 分钟", click: () => cardWin && cardWin.webContents.send("wgt:preset", 5) },
     { label: "10 分钟", click: () => cardWin && cardWin.webContents.send("wgt:preset", 10) },
     { label: "25 分钟（番茄钟）", click: () => cardWin && cardWin.webContents.send("wgt:preset", 25) },
@@ -1115,31 +1119,9 @@ async function buildMenu() {
           click: () => { patchState({ theme: "dark" }); pushTheme(); } },
       ],
     },
-    {
-      label: "提示音",
-      submenu: [
-        ...ALARM_SOUNDS.map(([id, label]) => ({
-          label: label,
-          type: "radio",
-          checked: soundName() === id,
-          click: () => {
-            patchState({ sound: { ...(readState().sound || {}), name: id } });
-            if (cardWin && !cardWin.isDestroyed()) {
-              try { cardWin.webContents.send("wgt:sound", soundCfg()); } catch (e) {}
-            }
-          },
-        })),
-        { type: "separator" },
-        {
-          label: "试听当前提示音",
-          click: () => {
-            if (cardWin && !cardWin.isDestroyed()) {
-              try { cardWin.webContents.send("timer:preview", soundName()); } catch (e) {}
-            }
-          },
-        },
-      ],
-    },
+    /* 提示音改成"打开卡片内面板"：原生菜单没有 hover 事件，
+       做不了"鼠标移上去就试听"，面板里可以。 */
+    { label: "提示音…", click: () => cardWin && cardWin.webContents.send("timer:show-sound") },
     {
       label: "到点静音",
       type: "checkbox",
@@ -1235,6 +1217,10 @@ app.whenReady().then(() => {
 
   /* ---------- 桌面快照背景 + 外观（透明度/磨砂，与待办卡同款） ---------- */
   ipcMain.handle("wgt:get-sound", () => soundCfg());
+  ipcMain.on("wgt:set-sound", (_e, name) => {
+    if (!ALARM_SOUNDS.some(([id]) => id === name)) return;
+    patchState({ sound: { ...(readState().sound || {}), name: name } });
+  });
   ipcMain.handle("wgt:backdrop-now", () => bdPayload());
   ipcMain.handle("wgt:get-look", () => readState().look || null);
   ipcMain.handle("wgt:set-look", (e, v) => {

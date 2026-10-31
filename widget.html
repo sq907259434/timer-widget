@@ -39,6 +39,7 @@
 
   .card{
     position:absolute; inset:0;
+    isolation:isolate;          /* 子元素（滚轮合成层）不许压过面板 */
     border-radius:30px;
     overflow:hidden;
     /* 滚动时 .band 会变成独立合成层，光靠 overflow:hidden 有时裁不住圆角，
@@ -70,7 +71,9 @@
   }
   /* 圆柱滚轮：7 个槽位。越远越小、越暗、越靠上/下——模拟圆柱面的透视压缩 */
   .num{
-    position:absolute; left:35px; right:0;
+    /* 左边距 22（原来 35）：两位数的右边缘要离竖线/圆点留出空隙，
+       否则"25"会直接压在圆点上，看着很挤 */
+    position:absolute; left:22px; right:0;
     text-align:left; line-height:1; font-variant-numeric:tabular-nums;
     transform:translateY(-50%);
     transition:font-size .18s ease, color .18s ease, opacity .18s ease;
@@ -79,8 +82,9 @@
   .num.s-3{ top:calc(50% - 112px); font-size:15px; color:#3D3D3D; }
   .num.s-2{ top:calc(50% - 89px);  font-size:22px; color:#575757; }
   .num.s-1{ top:calc(50% - 53px);  font-size:30px; color:#8E8E8E; }
+  .num.s0.wide{ font-size:34px; letter-spacing:0; }
   .num.s0 {
-    top:50%; font-size:55px; font-weight:500; letter-spacing:-1.5px;
+    top:50%; font-size:48px; font-weight:500; letter-spacing:-1px;
     color:#fff; text-shadow:0 0 22px rgba(255,255,255,.10);
   }
   .num.s1 { top:calc(50% + 53px);  font-size:30px; color:#8E8E8E; }
@@ -194,7 +198,8 @@
 
   /* 左下：重置（只有跑起来/暂停时才出现） */
   .reset{
-    position:absolute; left:22px; bottom:22px; z-index:4;
+    /* 和播放键并排放在右下（原来在最左下，离得远、误触也多） */
+    position:absolute; right:85px; bottom:26px; z-index:4;
     width:44px; height:44px; padding:0; border:0; border-radius:50%;
     background:rgba(255,255,255,.025);
     box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.12);
@@ -205,29 +210,94 @@
   .card.run .reset{ display:grid; }
   .reset:hover{ background:rgba(255,255,255,.07); color:#fff; }
   .reset svg{ width:18px; height:18px; }
+  /* 重置的两段确认：第一下之后变红，提示"再点一次" */
+  .reset.arm{
+    color:#FF7A6A;
+    box-shadow:inset 0 0 0 2px rgba(255,90,90,.65);
+    background:rgba(255,90,90,.12);
+  }
 
   /* ============ 底部提示 ============ */
+  /* 左上角单位徽标：点一下在 分 / 秒 之间切换 */
+  .unit{
+    /* 放右上角：左边是数字列、下边是按钮，只有右上这块是空的 */
+    position:absolute; right:12px; top:9px; z-index:7;
+    padding:2px 7px; border-radius:7px;
+    font-size:10px; letter-spacing:.5px;
+    color:rgba(255,255,255,.55);
+    background:rgba(255,255,255,.06);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);
+    cursor:pointer; user-select:none;
+    transition:background .15s ease, color .15s ease;
+  }
+  .unit:hover{ background:rgba(255,255,255,.12); color:#fff; }
+  body.light .unit{ color:rgba(0,0,0,.55); background:rgba(0,0,0,.05); box-shadow:inset 0 0 0 1px rgba(0,0,0,.10); }
+  body.light .unit:hover{ background:rgba(0,0,0,.10); color:#111; }
+
+  /* 预设胶囊：鼠标移到卡片上才浮出来（空态一直显示，否则新人找不到） */
+  .presets{
+    /* 右上角偏左一点，给单位徽标让出位置 */
+    position:absolute; left:68px; right:46px; top:9px; z-index:6;
+    display:flex; gap:5px; justify-content:flex-end;
+    opacity:0; transform:translateY(-3px); pointer-events:none;
+    transition:opacity .16s ease, transform .16s ease;
+  }
+  .card:hover .presets,
+  .card.empty .presets{ opacity:1; transform:none; pointer-events:auto; }
+  .card.run .presets, .card.pause .presets, .card.alarm .presets{ opacity:0; pointer-events:none; }
+  .presets button{
+    padding:2px 7px; border:0; border-radius:7px;
+    font:400 10px/1.5 inherit;
+    color:rgba(255,255,255,.62);
+    background:rgba(255,255,255,.06);
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);
+    cursor:pointer;
+    transition:background .14s ease, color .14s ease;
+  }
+  .presets button:hover{ background:rgba(255,255,255,.16); color:#fff; }
+  body.light .presets button{ color:rgba(0,0,0,.55); background:rgba(0,0,0,.05); box-shadow:inset 0 0 0 1px rgba(0,0,0,.10); }
+  body.light .presets button:hover{ background:rgba(0,0,0,.12); color:#111; }
+
+  /* 首用引导：一行小字，操作一次或 10 秒后消失 */
+  .hint{
+    /* 贴底一行：左右各留 14，保证不折行；高度落在按钮下方那条窄带里 */
+    position:absolute; left:14px; right:14px; bottom:10px; z-index:6;
+    text-align:center; font-size:9px; line-height:1.3; white-space:nowrap;
+    color:rgba(255,255,255,.40);
+    opacity:0; transition:opacity .3s ease; pointer-events:none;
+  }
+  .hint.on{ opacity:1; }
+  body.light .hint{ color:rgba(0,0,0,.42); }
+
+  /* 一句小提示（超范围 / 看不懂） */
+  .tip{
+    position:absolute; left:0; right:0; bottom:8px; z-index:9;
+    text-align:center; font-size:10px; color:#FFB4A8;
+    opacity:0; transform:translateY(4px);
+    transition:opacity .18s ease, transform .18s ease;
+    pointer-events:none;
+  }
+  .tip.on{ opacity:1; transform:none; }
+  body.light .tip{ color:#C0392B; }
+
   /* ============ 运行态：大数字换成 mm:ss ============ */
   .card.run .num:not(.s0){ opacity:0; }
-  /* 运行态：竖线 + 液位当进度条留着，数字放到圆点右侧
-     （放回滚轮那一列会和竖线、圆点叠在一起，实测糊成一团）。 */
-  /* 数字在 .wheel 里，而 .wheel 只有 172px 宽 —— 不撑满整卡的话
-     right 是相对 172 算的，数字会被挤在竖线右边一点、还压在圆点上。
-     运行态把滚轮撑满，数字右对齐贴卡片右边，正好落在圆点右侧的空白区。 */
+  /* 运行态：只留数字。圆点、竖线、橙色段、刻度全部收掉 ——
+     这些是"设定时间"时的操作提示，跑起来之后只是干扰，
+     而且会把本来能放大的数字挤到一边。 */
   .card.run .wheel{ width:100%; }
   .card.run .num.s0{
-    left:auto; right:16px; text-align:right; top:50%;
-    font-size:30px; font-weight:400; letter-spacing:.5px;
+    left:0; right:0; text-align:center; top:50%;
+    font-size:72px; font-weight:600; letter-spacing:-1.5px;
   }
-  /* 刻度收起，只留竖线 + 液位；液位高度由 JS 按"剩余/设定"逐帧给 */
+  .card.run .ticks,
+  .card.run .ruler,
+  .card.run .ruler-fill,
+  .card.run .ind,
+  .card.run .unit{ opacity:0; }
   body.scrubbing{ cursor:ns-resize; }
-  .card.run .ticks{ opacity:0; }
-  .card.run .ruler, .card.run .ruler-fill, .card.run .ind{ opacity:1; }
-  /* 红条和数字在同一水平线上，运行时要收掉 */
-  .card.run .ind .bar{ opacity:0; }
-  .card.run .ruler-fill{ transition:opacity .2s ease; }   /* 高度每帧都在变，不能带过渡 */
   /* 超时态：同一位置放一句"超时 N 分"，字号要小 */
-  .card.over .num.s0{ font-size:22px; font-weight:300; letter-spacing:0; }
+  .card.over .num.s0{ font-size:26px; font-weight:400; letter-spacing:0; }
 
   /* ============ 到点：整卡红闪 ============ */
   @keyframes flash{
@@ -235,6 +305,10 @@
     50%{ box-shadow:inset 0 0 0 2px rgba(255,90,90,.85), 0 0 26px rgba(255,90,90,.35); background-color:rgba(255,90,90,.10); }
   }
   /* 到点：边框加粗成明显的红环，再配合呼吸闪（用户要求"边框画粗一点"） */
+  /* 暂停：数字明显变淡（配右下暂停键的红色，一眼看出"停住了"） */
+  .card.pause .num.s0{ opacity:.42; }
+  .card.pause .ruler-fill{ opacity:.5; }
+
   .card.alarm{
     animation:flash 1s ease-in-out infinite;
     box-shadow:inset 0 0 0 5px rgba(255,70,70,.85), 0 0 22px rgba(255,60,60,.45);
@@ -260,9 +334,11 @@
 
   /* ============ 外观面板（右键菜单进来） ============ */
   .panel{
-    position:absolute; left:0; right:0; bottom:0; z-index:8;
+    /* z-index 要压过 .num（它有 will-change:transform，会自己开合成层） */
+    position:absolute; left:0; right:0; bottom:0; z-index:20;
     padding:12px 16px 14px;
-    background:rgba(14,18,30,.94);
+    /* 必须完全不透明：底下是 72px 的白数字，哪怕 1.5% 也会透出来像重影 */
+    background:#0E1219;
     box-shadow:0 -1px 0 rgba(255,255,255,.10), 0 -12px 28px rgba(0,0,0,.4);
     display:none;
   }
@@ -273,6 +349,26 @@
   .row b{ flex:0 0 34px; text-align:right; font-weight:500; color:var(--ink3); font-variant-numeric:tabular-nums; }
   .row input[type=range]{ flex:1 1 auto; min-width:0; accent-color:#8ea0c4; height:16px; }
   .panel .close{ margin-top:2px; font-size:11px; color:var(--ink3); text-align:right; cursor:pointer; }
+  /* 提示音面板：每行鼠标移上去就试听（原生右键菜单没有 hover，只能做成卡片内面板） */
+  .sndlist{ display:flex; flex-direction:column; gap:2px; margin:4px 0 6px; }
+  .sndrow{
+    display:flex; align-items:center; gap:7px;
+    padding:5px 7px; border-radius:7px;
+    font-size:11px; color:rgba(255,255,255,.72);
+    cursor:pointer;
+    transition:background .12s ease, color .12s ease;
+  }
+  .sndrow:hover{ background:rgba(255,255,255,.10); color:#fff; }
+  .sndrow .dotm{
+    flex:0 0 5px; width:5px; height:5px; border-radius:50%;
+    background:transparent; box-shadow:inset 0 0 0 1px rgba(255,255,255,.28);
+  }
+  .sndrow.on{ color:#fff; }
+  .sndrow.on .dotm{ background:#FF5A5A; box-shadow:0 0 6px rgba(255,90,90,.8); }
+  body.light .sndrow{ color:rgba(0,0,0,.68); }
+  body.light .sndrow:hover{ background:rgba(0,0,0,.07); color:#111; }
+  body.light .sndrow.on{ color:#111; }
+  body.light .sndrow .dotm{ box-shadow:inset 0 0 0 1px rgba(0,0,0,.25); }
   .panel .close:hover{ color:#fff; }
 
   /* ================= 日间（浅色）主题 =================
@@ -358,7 +454,7 @@
   }
 
   body.light .panel{
-    background:rgba(252,252,252,.97);
+    background:#FAFAFA;
     box-shadow:0 -1px 0 rgba(0,0,0,.06), 0 -12px 28px rgba(0,0,0,.10);
   }
   body.light .panel h4{ color:#111; }
@@ -397,6 +493,19 @@
 
   <div class="ind"><i class="dot"></i><i class="bar"></i></div>
 
+  <div class="unit" id="unit" title="点击切换 分 / 秒">分</div>
+
+  <div class="presets" id="presets">
+    <button data-p="5">5</button>
+    <button data-p="10">10</button>
+    <button data-p="25">25</button>
+    <button data-p="0">自定</button>
+  </div>
+
+  <div class="hint" id="hint">滚轮调时间 · 双击输入</div>
+
+  <div class="tip" id="tip"></div>
+
   <input class="edit" id="edit" maxlength="2" inputmode="numeric" spellcheck="false" autocomplete="off">
 
   <button class="reset" id="reset" title="重置">
@@ -416,6 +525,12 @@
     <label class="row"><span>磨砂</span><input id="lkFrost" type="range" min="0" max="20" step="1"><b id="lkFrostV"></b></label>
     <div class="close" id="lkClose">收起</div>
   </div>
+
+  <div class="panel snd" id="sndPanel">
+    <h4>提示音</h4>
+    <div class="sndlist" id="sndList"></div>
+    <div class="close" id="sndClose">收起</div>
+  </div>
 </div>
 
 <script>
@@ -434,7 +549,8 @@ if (!window.wgt) {
     setLook: () => Promise.resolve(true),
     onBackdrop: on, onBdFull: on, onBdPos: on, onBdDragEnd: on, onShowLook: on, onPreset: on,
     onImeText: on, onImeCommit: on, onImeCancel: on, onImeBlur: on,
-    onReset: on, onTheme: on, theme: "dark",
+    onReset: on, onHint: on, onTheme: on, theme: "dark",
+    setSound: noop, onShowSound: on,
     dismiss: noop, onResume: on, onDismiss: on,
     getSound: () => Promise.resolve({ mute:false, loop:true, name:"a-dingdong" }),
     onSound: on, onPreview: on,
@@ -456,7 +572,8 @@ const cardEl = $("card");
 /* ================= 状态 =================
    mode: "idle"（可调时间）| "run"（倒计时中）| "pause"（暂停，显示剩余）
    minutes: 设定的分钟数（0–60）；remain: 剩余毫秒 */
-const MIN_MAX = 60;
+const MIN_MAX = 99;              /* 分钟上限提到 99 */
+let unit = "min";                /* min | sec：滚轮和输入按哪个单位走 */
 const KEY = "timer_min_v1";
 
 let minutes = 0;      /* 默认 0：跟参考图一致，滚一下才开始设定 */
@@ -475,16 +592,31 @@ try {
   }
 } catch (e) {}
 
+function saveUnit() {
+  try { localStorage.setItem("timer_unit_v1", unit); } catch (e) {}
+}
+function loadUnit() {
+  try {
+    const v = localStorage.getItem("timer_unit_v1");
+    if (v === "sec" || v === "min") unit = v;
+  } catch (e) {}
+}
+/* 当前值换算成秒（分钟模式要乘 60） */
+function totalSeconds() {
+  return unit === "sec" ? minutes : minutes * 60;
+}
+
 /* 滚轮的 7 个槽位：id + 相对当前值的偏移 */
 const SLOTS = [["nm3", -3], ["nm2", -2], ["nm1", -1], ["np1", 1], ["np2", 2], ["np3", 3]];
 
 const pad2 = (n) => String(n).padStart(2, "0");
 /* 输入框用：夹在 0–60 */
-const clampMin = (v) => Math.max(0, Math.min(MIN_MAX, Math.round(v)));
+const clampMin = (v) => Math.max(0, Math.min(MIN_MAX, Math.round(v * 10) / 10));
 /* 滚轮用：0–60 首尾相接（0 再往上就是 60），跟参考图一致 */
 const wrapMin = (v) => {
-  const n = Math.round(v) % (MIN_MAX + 1);
-  return n < 0 ? n + (MIN_MAX + 1) : n;
+  let n = v % (MIN_MAX + 1);
+  if (n < 0) n += MIN_MAX + 1;
+  return Math.round(n * 10) / 10;
 };
 
 /* ================= 滚动动画 =================
@@ -525,6 +657,8 @@ function tickSound(dir) {
 }
 
 function rollTo(dir, next, keepRemain) {
+  markHint();
+  $("sndPanel").classList.remove("on");
   if (rollTimer) finishRoll();        /* 连滚：上一格立刻落定，不排队 */
   rollNext = next;
   rollKeep = !!keepRemain;
@@ -568,22 +702,32 @@ function mmss(ms) {
 }
 
 function label(v) {
-  /* 首尾相接：0 的上面是 60，60 的下面是 0（参考图就是这个排法） */
-  return String(wrapMin(v));
+  /* 首尾相接：0 的上面是上限，上限的下面是 0 */
+  const n = wrapMin(v);
+  if (Number.isInteger(n)) return String(n);
+  /* 带秒的值（3.5 分钟）显示成 03:30，比 "3.5" 好读 */
+  if (unit === "sec") return String(Math.round(n));
+  const total = Math.round(n * 60);
+  return pad2(Math.floor(total / 60)) + ":" + pad2(total % 60);
 }
 
 function render() {
   const n0 = $("n0");
   /* 设了时间才点亮液位（默认 0 分钟时整条竖线是灰的） */
   cardEl.classList.toggle("filled", minutes > 0);
+  cardEl.classList.toggle("empty", minutes === 0 && mode !== "run" && mode !== "pause");
+  $("unit").textContent = unit === "sec" ? "秒" : "分";
+  const t0 = label(minutes);
+  n0.classList.toggle("wide", t0.length >= 4);
   if (mode === "run" || mode === "pause") {
     cardEl.classList.add("run");
+    cardEl.classList.toggle("pause", mode === "pause");
     n0.textContent = mmss(remain);
     $("icoPlay").classList.toggle("on", mode === "pause");
     $("icoPause").classList.toggle("on", mode === "run");
   } else {
-    cardEl.classList.remove("run");
-    n0.textContent = String(minutes);
+    cardEl.classList.remove("run", "pause");
+    n0.textContent = label(minutes);
     $("icoPlay").classList.add("on");
     $("icoPause").classList.remove("on");
   }
@@ -632,10 +776,11 @@ function saveRun() {
 
 function start() {
   if (minutes <= 0) return;
-  totalMs = minutes * 60000;
+  totalMs = totalSeconds() * 1000;
   remain = totalMs;
   endAt = Date.now() + remain;
   mode = "run";
+  runStartAt = Date.now();
   stopAlarm();
   render();
   tickLoop();
@@ -646,6 +791,7 @@ function resume() {
   if (remain <= 0) { start(); return; }
   endAt = Date.now() + remain;
   mode = "run";
+  runStartAt = Date.now();
   render();
   tickLoop();
   saveRun();
@@ -695,6 +841,9 @@ function finish(overdueMs) {
    循环 / 只响一次由设置决定；"系统提示音"那条交给主进程 beep。 */
 let SOUND = { mute: false, loop: true, name: "a-dingdong" };
 let alarmAudio = null;
+let alarmStopTimer = 0;
+/* 响满 2 分钟就收声：人不在的话一直响很烦；红闪不停，回来还看得见 */
+const ALARM_MAX_MS = 120000;
 
 function alarmSrc(name) {
   return "assets/alarm-" + name + ".wav";
@@ -714,10 +863,14 @@ function playAlarm() {
     alarmAudio.currentTime = 0;
     const p = alarmAudio.play();
     if (p && p.catch) p.catch(() => {});
+    clearTimeout(alarmStopTimer);
+    alarmStopTimer = setTimeout(stopAlarmAudio, ALARM_MAX_MS);
   } catch (e) { /* 没声卡就静音降级，通知还在 */ }
 }
 
 function stopAlarmAudio() {
+  clearTimeout(alarmStopTimer);
+  alarmStopTimer = 0;
   if (!alarmAudio) return;
   try { alarmAudio.pause(); alarmAudio.currentTime = 0; } catch (e) {}
 }
@@ -733,6 +886,55 @@ function previewSound(name) {
   } catch (e) {}
 }
 
+/* ================= 提示音面板 =================
+   原生右键菜单没有 hover 事件，做不了"移上去就响"。
+   所以提示音做成卡片内面板：鼠标划过哪一行就试听哪一行，点一下选中。 */
+const SND_LIST = [
+  ["a-dingdong", "叮咚 · 清亮"],
+  ["b-soft", "柔和三连"],
+  ["c-beep", "电子表 · 三短声"],
+  ["d-bell", "低钟 · 沉稳"],
+  ["e-wood", "木质叩击"],
+  ["system", "系统提示音"],
+];
+
+function renderSndList() {
+  const box = $("sndList");
+  if (!box) return;
+  box.innerHTML = SND_LIST.map(([id, label]) =>
+    '<div class="sndrow' + (SOUND.name === id ? " on" : "") + '" data-id="' + id + '">' +
+      '<i class="dotm"></i><span>' + label + '</span></div>').join("");
+}
+
+let hoverT = 0;
+$("sndList").addEventListener("mouseover", (e) => {
+  const row = e.target.closest(".sndrow");
+  if (!row) return;
+  if (row.dataset.id === "system") return;      /* 系统音没法预览 */
+  clearTimeout(hoverT);
+  /* 稍微延后一点：鼠标扫过一串时不会一串声音连着炸 */
+  hoverT = setTimeout(() => previewSound(row.dataset.id), 120);
+});
+$("sndList").addEventListener("mouseleave", () => clearTimeout(hoverT));
+$("sndList").addEventListener("click", (e) => {
+  const row = e.target.closest(".sndrow");
+  if (!row) return;
+  SOUND.name = row.dataset.id;
+  renderSndList();
+  if (window.wgt.setSound) window.wgt.setSound(SOUND.name);
+  if (SOUND.name !== "system") previewSound(SOUND.name);
+});
+$("sndClose").addEventListener("click", () => $("sndPanel").classList.remove("on"));
+
+function showSndPanel() {
+  $("panel").classList.remove("on");        /* 两个面板不同时开 */
+  renderSndList();
+  $("sndPanel").classList.add("on");
+  /* 打开时把音频解锁一下：有些环境要一次用户手势才允许播放 */
+  try { if (AC && AC.state === "suspended") AC.resume(); } catch (e) {}
+}
+if (window.wgt.onShowSound) window.wgt.onShowSound(showSndPanel);
+
 if (window.wgt.getSound) {
   window.wgt.getSound().then((v) => { if (v) SOUND = v; }).catch(() => {});
 }
@@ -747,6 +949,62 @@ function stopAlarm() {
   try { window.wgt.dismiss(); } catch (e) {}   /* 让主进程也停（系统音） */
 }
 
+/* 把用户打的字变成时间。
+   支持：90（按当前单位） / 3:30（分:秒） / 45s / 45秒 / 2m / 2分 / 1m30s
+   超出范围就提示一句并保持原值，不崩。 */
+function parseTyped(raw) {
+  const t = String(raw == null ? "" : raw).trim().toLowerCase();
+  if (!t) return null;
+
+  const mmss = t.match(/^(\d{1,3})\s*[:：]\s*(\d{1,2})$/);
+  if (mmss) {
+    const m = Number(mmss[1]), sec = Number(mmss[2]);
+    if (sec > 59) return { bad: "秒数不能超过 59" };
+    return { sec: m * 60 + sec, unit: "min" };
+  }
+  const withU = t.match(/^(\d{1,3})\s*(s|秒|m|分|分钟)$/);
+  if (withU) {
+    const n = Number(withU[1]);
+    return /s|秒/.test(withU[2]) ? { sec: n, unit: "sec" } : { sec: n * 60, unit: "min" };
+  }
+  const plain = t.match(/^(\d{1,3})$/);
+  if (plain) {
+    const n = Number(plain[1]);
+    return unit === "sec" ? { sec: n, unit: "sec" } : { sec: n * 60, unit: "min" };
+  }
+  return { bad: "看不懂，试试 25 / 3:30 / 45s" };
+}
+
+function applyTyped(raw) {
+  const r = parseTyped(raw);
+  if (!r) return;
+  if (r.bad) { flashTip(r.bad); return; }
+  if (r.unit === "sec" && r.sec > MIN_MAX) { flashTip("秒数最多 " + MIN_MAX); return; }
+  if (r.unit === "min" && r.sec > MIN_MAX * 60) { flashTip("分钟最多 " + MIN_MAX); return; }
+  if (r.sec <= 0) { flashTip("要大于 0"); return; }
+
+  if (r.unit === "sec" && r.sec < 60) {
+    unit = "sec";
+    setMinutes(r.sec);
+  } else {
+    unit = "min";
+    setMinutes(Math.round(r.sec / 60 * 10) / 10);   /* 3:30 → 3.5 分钟 */
+  }
+  saveUnit();
+  render();
+}
+
+/* 一句小提示（超范围/看不懂），2 秒后自己消失 */
+let tipTimer = 0;
+function flashTip(msg) {
+  let el = $("tip");
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.add("on");
+  clearTimeout(tipTimer);
+  tipTimer = setTimeout(() => el.classList.remove("on"), 2000);
+}
+
 /* ================= 交互：滚轮 ================= */
 cardEl.addEventListener("wheel", (e) => {
   e.preventDefault();
@@ -757,10 +1015,62 @@ cardEl.addEventListener("wheel", (e) => {
   rollTo(d, wrapMin(curValue() + d), false);
 }, { passive: false });
 
+/* ================= 单位切换 / 预设 / 引导 ================= */
+$("unit").addEventListener("click", () => {
+  unit = unit === "sec" ? "min" : "sec";
+  saveUnit();
+  render();
+});
+
+$("presets").addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  const p = Number(b.dataset.p);
+  if (!p) { openEdit(); return; }        /* "自定" → 直接进输入 */
+  unit = "min";
+  saveUnit();
+  mode = "idle";
+  setMinutes(p);
+  markHint();
+});
+
+/* 首用引导：只在第一次出现，操作一次或 10 秒后消失 */
+const HINT_KEY = "timer_hint_v1";
+let hintTimer = 0;
+function showHint(force) {
+  let seen = false;
+  try { seen = localStorage.getItem(HINT_KEY) === "1"; } catch (e) {}
+  if (seen && !force) return;
+  $("hint").classList.add("on");
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(markHint, 10000);
+}
+function markHint() {
+  clearTimeout(hintTimer);
+  $("hint").classList.remove("on");
+  try { localStorage.setItem(HINT_KEY, "1"); } catch (e) {}
+}
+if (window.wgt.onHint) window.wgt.onHint(() => { try { localStorage.removeItem(HINT_KEY); } catch (e) {} showHint(true); });
+
 /* ================= 交互：重置 ================= */
+let runStartAt = 0;            /* 本轮开始跑的时刻，用来判断"已经跑了一会儿" */
+let resetArm = 0;              /* 重置的两段确认时间戳 */
+
 function doReset() {
+  /* 跑了一会儿再按重置 = 可能误触，先要求再点一次 */
+  const elapsed = runStartAt ? Date.now() - runStartAt : 0;
+  if (mode === "run" && elapsed > 10000 && Date.now() - resetArm > 3000) {
+    resetArm = Date.now();
+    $("reset").classList.add("arm");
+    flashTip("再点一次确认重置");
+    setTimeout(() => $("reset").classList.remove("arm"), 3000);
+    return;
+  }
+  resetArm = 0;
+  $("reset").classList.remove("arm");
   if (raf) { cancelAnimationFrame(raf); raf = null; }
   mode = "idle";
+  runStartAt = 0;
   stopAlarm();
   setMinutes(minutes);          /* 回到设定值，重新可调 */
 }
@@ -770,6 +1080,8 @@ if (window.wgt && window.wgt.onReset) window.wgt.onReset(doReset);
 
 /* ================= 交互：播放 / 暂停 ================= */
 $("play").addEventListener("click", () => {
+  markHint();
+  $("sndPanel").classList.remove("on");
   if (alarmOn) { stopAlarm(); setMinutes(minutes); return; }
   if (mode === "run") pause();
   else if (mode === "pause") resume();
@@ -805,10 +1117,7 @@ function closeEdit(commit) {
   edit.classList.remove("on");
   $("n0").style.visibility = "";
   try { window.wgt.imeEnd(); } catch (e) {}
-  if (commit) {
-    const v = parseInt(String(edit.value).replace(/[^\d]/g, ""), 10);
-    if (Number.isFinite(v)) setMinutes(v);
-  }
+  if (commit) applyTyped(edit.value);
   render();
 }
 
@@ -987,11 +1296,13 @@ function restoreRun() {
 }
 
 /* ================= 启动 ================= */
+loadUnit();
 document.body.classList.add(window.wgt && window.wgt.acrylic ? "acrylic" : "solid");
 if (!restoreRun()) {
-  remain = minutes * 60000;
+  remain = totalSeconds() * 1000;
   render();
 }
+showHint();
 
 /* 睡眠/休眠回来：按结束时间戳重算，别让数字停在睡前那一刻 */
 if (window.wgt.onResume) {
