@@ -1,8 +1,8 @@
 /* 倒计时卡片（独立版）—— Electron 主进程
-   和「待办清单」「天气卡片」同一套骨架：贴进桌面层（Win+D 不消失）、桌面快照做背景、
+   和「待办清单」「天气卡片」同一套骨架（视觉与交互独立，代码不共用）：贴进桌面层、桌面快照做背景、
    主进程跟光标拖动、幽灵输入窗代收键盘。本卡只做一件事：倒计时。 */
 
-const { app, BrowserWindow, ipcMain, Menu, screen, globalShortcut, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, screen, globalShortcut, shell, nativeTheme } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { execFile } = require("child_process");
@@ -108,6 +108,25 @@ function patchState(patch) {
 
 /* 贴进桌面层（state.desktopLayer）：窗口层级放在启动时做，切换就重启自己。
    万一贴进去看不见，按 Ctrl+Alt+2 = 把状态改回 false 再重启，窗口一定回来。 */
+/* ================= 日间 / 夜间 =================
+   存档里存 theme：auto（默认，跟系统）/ light / dark。
+   页面只认最终结果（body.light 或不加），切换逻辑全在主进程，
+   这样系统主题变了、用户点菜单，都走同一条路。 */
+function themeSetting() {
+  const t = readState().theme;
+  return t === "light" || t === "dark" ? t : "auto";
+}
+function resolvedTheme() {
+  const t = themeSetting();
+  if (t !== "auto") return t;
+  try { return nativeTheme.shouldUseDarkColors ? "dark" : "light"; } catch (e) { return "dark"; }
+}
+function pushTheme() {
+  if (cardWin && !cardWin.isDestroyed()) {
+    try { cardWin.webContents.send("wgt:theme", resolvedTheme()); } catch (e) {}
+  }
+}
+
 function desktopLayerOn() {
   /* 默认开：另两张卡用户都开着了，新卡第一次启动就该是"贴进桌面"的样子；
      用户在菜单里明确关掉才记 false。 */
@@ -613,7 +632,7 @@ function scaleLog(msg) {
 
 
 /* ---------- 首次启动迁移 ----------
-   独立版存档在 %APPDATA%\WeatherCard，合体版在 %APPDATA%\weather-widget。
+   存档在 %APPDATA%\TimerCard。
    第一次启动把合体版的窗口位置/置顶搬过来；Local Storage（搜索城市等页面数据）
    也整个目录复制过去。已有自己的存档就不动。 */
 function createWindow() {
@@ -674,7 +693,7 @@ function createWindow() {
     skipTaskbar: true,
     alwaysOnTop: top,
     show: false,
-    title: "天气卡片",
+    title: "倒计时",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -683,13 +702,14 @@ function createWindow() {
       additionalArguments: [
         "--wgt-acrylic=" + (USE_ACRYLIC ? "1" : "0"),
         "--wgt-card=timer",
+        "--wgt-theme=" + resolvedTheme(),
       ],
       backgroundThrottling: false, // 后台不降频，否则切走再回来数字是旧的
       zoomFactor: 1,
     },
   });
 
-  cardWin = w;   /* 之前漏了这一句：天气卡所有用到 cardWin 的地方都拿不到窗口 */
+  cardWin = w;   /* 之前漏了这一句：所有用到 cardWin 的地方都拿不到窗口 */
 
   /* 桌面快照：赶在 show 之前抓（否则快照里嵌着卡片自己）。磨砂模式有真模糊，不用快照 */
   if (!USE_ACRYLIC) {
@@ -705,7 +725,7 @@ function createWindow() {
 
   if (top) w.setAlwaysOnTop(true, "floating");
 
-  /* 事件留痕（%APPDATA%\WeatherCard\win-events.log）：窗口生命周期事件很罕见，
+  /* 事件留痕（%APPDATA%\TimerCard\win-events.log）：窗口生命周期事件很罕见，
      一旦用户再报"卡片自己消失/弹出"，这就是精确现场。 */
   const evlogSafe = (msg) => {
     try {
@@ -967,7 +987,7 @@ function setAutoStart(on) {
 /* ---------- 桌面空白处右键菜单 ----------
    往 HKCU\Software\Classes\DesktopBackground\Shell 下写一项，不碰 HKLM、不需要管理员。
    Explorer 会实时读这个位置，写完立刻生效；关掉就删掉整项。 */
-const DESKTOP_MENU_KEY = "HKCU\\Software\\Classes\\DesktopBackground\\Shell\\WeatherWidget";
+const DESKTOP_MENU_KEY = "HKCU\\Software\\Classes\\DesktopBackground\\Shell\\TimerWidget";
 
 function reg(args) {
   return new Promise((resolve) => {
@@ -989,7 +1009,7 @@ async function setDesktopMenu(on) {
     return getDesktopMenu();
   }
   const exe = launchExePath();
-  await reg(["add", DESKTOP_MENU_KEY, "/ve", "/d", "显示天气卡片", "/f"]);
+  await reg(["add", DESKTOP_MENU_KEY, "/ve", "/d", "显示倒计时卡片", "/f"]);
   await reg(["add", DESKTOP_MENU_KEY, "/v", "Icon", "/d", exe, "/f"]);
   /* 命令里带空格必须自己加引号，reg 不会替你转义 */
   await reg(["add", DESKTOP_MENU_KEY + "\\command", "/ve", "/d", '"' + exe + '"', "/f"]);
@@ -1002,11 +1022,22 @@ async function buildMenu() {
   const desktopMenu = await getDesktopMenu();
 
   return Menu.buildFromTemplate([
-    { label: "刷新天气", accelerator: "F5", click: () => cardWin && cardWin.webContents.send("wgt:refresh") },
+    { label: "重置计时", accelerator: "F5", click: () => cardWin && cardWin.webContents.send("timer:reset") },
     { label: "5 分钟", click: () => cardWin && cardWin.webContents.send("wgt:preset", 5) },
     { label: "10 分钟", click: () => cardWin && cardWin.webContents.send("wgt:preset", 10) },
     { label: "25 分钟（番茄钟）", click: () => cardWin && cardWin.webContents.send("wgt:preset", 25) },
     { type: "separator" },
+    {
+      label: "主题",
+      submenu: [
+        { label: "跟随系统", type: "radio", checked: themeSetting() === "auto",
+          click: () => { patchState({ theme: "auto" }); pushTheme(); } },
+        { label: "日间（浅色）", type: "radio", checked: themeSetting() === "light",
+          click: () => { patchState({ theme: "light" }); pushTheme(); } },
+        { label: "夜间（深色）", type: "radio", checked: themeSetting() === "dark",
+          click: () => { patchState({ theme: "dark" }); pushTheme(); } },
+      ],
+    },
     { label: "外观设置（透明度 / 磨砂）", click: () => cardWin && cardWin.webContents.send("wgt:show-look") },
     { label: "刷新桌面背景", click: () => refreshSnapshot("menu") },
     { type: "separator" },
@@ -1059,6 +1090,8 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 app.whenReady().then(() => {
+  /* 系统切深浅色时，跟随系统的那张卡要立刻变 */
+  try { nativeTheme.on("updated", () => { if (themeSetting() === "auto") pushTheme(); }); } catch (e) {}
   /* 这里才定磨砂/投影边距：贴进桌面层时系统磨砂不可用，必须改走透明自绘 */
   USE_ACRYLIC = acrylicSupported() && !desktopLayerOn();
   PAD = 0;
@@ -1142,7 +1175,7 @@ app.whenReady().then(() => {
     const w = senderWin(e);
     if (!w || w.isDestroyed()) return;
     /* 桌面层里：只把自己的兄弟 z 序抬到最前（这样鼠标指哪张卡、哪张卡就在上面，
-       不会出现"待办永远压在天气后面"）。绝不能 setAlwaysOnTop —— 子窗口置顶无意义，
+       不会出现"待办永远压在倒计时后面"）。绝不能 setAlwaysOnTop —— 子窗口置顶无意义，
        而且下一次"撤销置顶"会把卡片沉进图标层后面（就是消失的那个 bug）。 */
     if (DL && DL.isOn()) { DL.raise(); return; }
     w.__hoverTop = true;

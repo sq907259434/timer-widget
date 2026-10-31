@@ -3,6 +3,13 @@ const { contextBridge, ipcRenderer } = require("electron");
 /* 是否使用系统磨砂：由主进程按 Windows 版本决定，通过启动参数传进来 */
 const ACRYLIC = process.argv.some((a) => a === "--wgt-acrylic=1");
 
+/* 初始主题（light / dark）：主进程已经按"跟随系统/手动"解析过，这里只认结果 */
+function argVal(name, dflt) {
+  const hit = process.argv.find((a) => a.startsWith(name + "="));
+  return hit ? hit.slice(name.length + 1) : dflt;
+}
+const THEME = argVal("--wgt-theme", "dark");
+
 contextBridge.exposeInMainWorld("wgt", {
   acrylic: ACRYLIC,
   close: () => ipcRenderer.send("wgt:close"),
@@ -27,6 +34,11 @@ contextBridge.exposeInMainWorld("wgt", {
   onShowLook: (fn) => ipcRenderer.on("wgt:show-look", () => fn()),
   /* 右键菜单里的预设时长（分钟） */
   onPreset: (fn) => ipcRenderer.on("wgt:preset", (_e, m) => fn(Number(m) || 0)),
+  /* 右键菜单里的"重置计时" */
+  onReset: (fn) => ipcRenderer.on("timer:reset", () => fn()),
+  /* 日间/夜间：主进程决定，页面只负责换皮 */
+  theme: THEME,
+  onTheme: (fn) => ipcRenderer.on("wgt:theme", (_e, t) => fn(t)),
   /* 倒计时到点：主进程响提示音 */
   done: () => ipcRenderer.send("timer:done"),
   /* 桌面层输入桥：子窗口拿不到键盘焦点，双击改时间由幽灵输入窗代收 */

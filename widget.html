@@ -5,7 +5,7 @@
 <title>倒计时</title>
 <style>
   /* ============ 基础 ============
-     和「待办清单」「天气卡片」同一套视觉语言：深色玻璃 + 桌面快照做背景。
+     和「待办清单」「天气卡片」同一套视觉语言（视觉一致，代码独立）：玻璃底 + 桌面快照做背景。
      卡片尺寸 250x264、圆角 24。尺寸刻意做小：这类卡是「瞥一眼」用的，
      不需要占一块地方（窗口由主进程按 CARD_W/H + 投影边距算）。 */
   *{ box-sizing:border-box; }
@@ -252,6 +252,98 @@
   .row input[type=range]{ flex:1 1 auto; min-width:0; accent-color:#8ea0c4; height:16px; }
   .panel .close{ margin-top:2px; font-size:11px; color:var(--ink3); text-align:right; cursor:pointer; }
   .panel .close:hover{ color:#fff; }
+
+  /* ================= 日间（浅色）主题 =================
+     只做覆盖，不改上面那套深色规则：body 上挂 .light 才生效，
+     夜间模式一个字节都不受影响。 */
+  body.light{ color:#111; }
+
+  body.light .card{
+    background-image:linear-gradient(178deg,
+      color-mix(in srgb, #FFFFFF calc(var(--a) * 100%), transparent) 0%,
+      color-mix(in srgb, #F8F8F8 calc(var(--a) * 100%), transparent) 46%,
+      color-mix(in srgb, #EFEFEF calc(var(--a) * 100%), transparent) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,.95),
+      inset 0 0 0 1px rgba(0,0,0,.05),
+      0 6px 22px rgba(0,0,0,.10);
+  }
+  body.light .card::after{ background:none; }
+
+  body.light .num.s-3{ color:#C9C9C9; }
+  body.light .num.s-2{ color:#AFAFAF; }
+  body.light .num.s-1{ color:#8A8A8A; }
+  body.light .num.s0 { color:#111; text-shadow:none; }
+
+  body.light .ruler{
+    background:linear-gradient(to bottom,
+      rgba(0,0,0,.05) 0%,
+      rgba(0,0,0,.10) 24%,
+      rgba(0,0,0,.15) 50%,
+      rgba(0,0,0,.10) 76%,
+      rgba(0,0,0,.05) 100%);
+    box-shadow:1px 0 0 rgba(255,255,255,.85);
+  }
+
+  body.light .ticks i.t-3{ background:rgba(0,0,0,.10); }
+  body.light .ticks i.t-2{ background:rgba(0,0,0,.16); }
+  body.light .ticks i.t-1{ background:rgba(0,0,0,.22); }
+  body.light .ticks i.t0 { background:rgba(0,0,0,.28); }
+  body.light .ticks i.t1 { background:rgba(0,0,0,.22); }
+  body.light .ticks i.t2 { background:rgba(0,0,0,.16); }
+  body.light .ticks i.t3 { background:rgba(0,0,0,.10); }
+  body.light .card.filled .ticks i.t-3{ background:rgba(233,169,78,.90); }
+  body.light .card.filled .ticks i.t-2{ background:rgba(233,169,78,.55); }
+  body.light .card.filled .ticks i.t-1{ background:rgba(233,169,78,.32); }
+
+  body.light .ruler-fill{
+    background:linear-gradient(to bottom, #F2B75E 0%, #EC9A5E 45%, #E4623F 100%);
+    box-shadow:0 0 8px rgba(232,140,80,.30);
+  }
+
+  body.light .ind .dot{
+    background:radial-gradient(circle at 38% 34%, #fff 0%, #fff 55%, #EFEFEF 100%);
+    box-shadow:0 0 0 3px rgba(0,0,0,.045), 0 1px 4px rgba(0,0,0,.18);
+  }
+
+  body.light .ind .bar{
+    background:linear-gradient(90deg, #FF3B30 0%, rgba(255,59,48,.92) 45%, rgba(255,59,48,.32) 78%, rgba(255,59,48,0) 100%);
+    box-shadow:0 0 10px rgba(255,70,60,.30), 0 0 26px 4px rgba(255,70,60,.08);
+  }
+
+  body.light .play{
+    background:rgba(0,0,0,.015);
+    box-shadow:inset 0 0 0 2px rgba(0,0,0,.10);
+    color:#B4B4B4;
+  }
+  body.light .play svg{ color:#A8A8A8; }
+  body.light .play:hover{ background:rgba(0,0,0,.05); box-shadow:inset 0 0 0 2px rgba(0,0,0,.18); }
+  body.light .play:hover svg{ color:#666; }
+  body.light .reset{
+    background:rgba(0,0,0,.015);
+    box-shadow:inset 0 0 0 1.5px rgba(0,0,0,.08);
+    color:rgba(0,0,0,.35);
+  }
+  body.light .reset:hover{ background:rgba(0,0,0,.05); color:#333; }
+
+  body.light .card.run .play{ box-shadow:inset 0 0 0 2px rgba(255,90,80,.55); }
+  body.light .card.run .play svg{ color:#FF6B5E; }
+
+  body.light .edit{
+    background:rgba(255,255,255,.96);
+    box-shadow:inset 0 0 0 1.5px rgba(0,0,0,.22);
+    color:#111;
+  }
+
+  body.light .panel{
+    background:rgba(252,252,252,.97);
+    box-shadow:0 -1px 0 rgba(0,0,0,.06), 0 -12px 28px rgba(0,0,0,.10);
+  }
+  body.light .panel h4{ color:#111; }
+  body.light .panel .row span{ color:rgba(0,0,0,.6); }
+  body.light .panel .row b{ color:rgba(0,0,0,.45); }
+  body.light .panel .close{ color:rgba(0,0,0,.4); }
+  body.light .panel .close:hover{ color:#111; }
 </style>
 </head>
 <body>
@@ -320,8 +412,18 @@ if (!window.wgt) {
     setLook: () => Promise.resolve(true),
     onBackdrop: on, onBdFull: on, onBdPos: on, onBdDragEnd: on, onShowLook: on, onPreset: on,
     onImeText: on, onImeCommit: on, onImeCancel: on, onImeBlur: on,
+    onReset: on, onTheme: on, theme: "dark",
   };
 }
+
+/* ================= 日间 / 夜间 =================
+   主进程已经把"跟随系统 / 手动"解析成 light|dark，这里只负责换皮。
+   放在所有初始化之前：首帧就带上 .light，不会先闪一下深色。 */
+function applyTheme(t) {
+  document.body.classList.toggle("light", t === "light");
+}
+applyTheme((window.wgt && window.wgt.theme) || "dark");
+if (window.wgt && window.wgt.onTheme) window.wgt.onTheme(applyTheme);
 
 const $ = (id) => document.getElementById(id);
 const cardEl = $("card");
@@ -522,12 +624,15 @@ cardEl.addEventListener("wheel", (e) => {
 }, { passive: false });
 
 /* ================= 交互：重置 ================= */
-$("reset").addEventListener("click", () => {
+function doReset() {
   if (raf) { cancelAnimationFrame(raf); raf = null; }
   mode = "idle";
   stopAlarm();
   setMinutes(minutes);          /* 回到设定值，重新可调 */
-});
+}
+$("reset").addEventListener("click", doReset);
+/* 右键菜单「重置计时」 */
+if (window.wgt && window.wgt.onReset) window.wgt.onReset(doReset);
 
 /* ================= 交互：播放 / 暂停 ================= */
 $("play").addEventListener("click", () => {

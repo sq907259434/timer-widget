@@ -1,7 +1,7 @@
 {
   "name": "timer-card",
   "productName": "TimerCard",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "倒计时 —— 桌面小卡：滚轮调时间、双击输入、播放/暂停（Electron 独立版）",
   "author": {
     "name": "sq907259434"
@@ -21,7 +21,7 @@
   "build": {
     "appId": "com.timercard.desktop",
     "productName": "TimerCard",
-    "copyright": "Copyright © 2026 WeatherWidget Contributors",
+    "copyright": "Copyright © 2026 sq907259434",
     "asar": true,
     "compression": "maximum",
     "npmRebuild": false,
