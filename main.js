@@ -20,7 +20,7 @@ const createBackdrop = require("./backdrop");
 const CARD_W = 260;
 const CARD_H = 240;
 /* 横版：顶部一排 ← / 切换 / ×，下面一行 重置 · 数字 · 播放 */
-const WIDE_W = 320, WIDE_H = 140, WIDE_RAD = 22;
+const WIDE_W = 213, WIDE_H = 93, WIDE_RAD = 18;
 function layoutIsWide() { return readState().layout === "wide"; }
 function cardSize() { return layoutIsWide() ? { w: WIDE_W, h: WIDE_H } : { w: CARD_W, h: CARD_H }; }
 /* 横条（mini 布局）已按用户要求移除，只保留方形卡片。 */

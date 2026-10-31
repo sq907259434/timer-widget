@@ -301,35 +301,36 @@
   /* 中间上方的图钉：悬停出现，点了钉在最前（再点取消） */
   /* ===== 横版（320x140）=====
      顶部：← / 切换 / × 三个按钮常显；下面一行：重置 · 数字 · 播放 */
-  /* 和左右两个按钮同一条水平线（按钮中心 83px） */
-  body.wide .card .num.s0{ top:83px; font-size:46px; letter-spacing:-1px; }
+  /* 卡片缩到 213x93 后：横向内边距收到 8，数字与按钮中心都落在 52px。
+     数字 46px 时文字宽 113px，可用 117px —— 刚好放得下（再小就会压到按钮）。 */
+  body.wide .card .num.s0{ top:52px; font-size:46px; letter-spacing:-1px; }
   body.wide .card .btns{
-    inset:0; padding:0 16px 0;
+    inset:0; padding:0 8px 0;
     justify-content:space-between; align-items:center;
     pointer-events:none;
   }
   body.wide .card .btns .play, body.wide .card .btns .reset{ pointer-events:auto; }
-  body.wide .card .play, body.wide .card .reset{ width:40px; height:40px; margin-top:26px; }
+  body.wide .card .play, body.wide .card .reset{ width:40px; height:40px; margin-top:11px; }
   body.wide .card .play svg, body.wide .card .reset svg{ width:17px; height:17px; }
   /* 顶部三个也是"挪上去才出现"，和方形里一致 */
   body.wide .card .back, body.wide .card .rot, body.wide .card .xclose{
     display:grid; opacity:0; pointer-events:none; transform:none;
-    top:9px; width:26px; height:26px;
+    top:2px; width:26px; height:26px;
     transition:opacity .16s ease;
   }
   body.wide .card:hover .back,
   body.wide .card:hover .rot,
   body.wide .card:hover .xclose{ opacity:1; pointer-events:auto; }
-  body.wide .card .back{ left:12px; }
+  body.wide .card .back{ left:8px; }
   body.wide .card .rot{ left:50%; transform:translateX(-50%); }
-  body.wide .card .xclose{ right:12px; }
-  body.wide .card .since{ top:auto; bottom:8px; font-size:9px; }
+  body.wide .card .xclose{ right:8px; }
+  body.wide .card .since{ top:auto; bottom:2px; font-size:8.5px; }
 
   /* 横版"到点"状态：数字退居次要，两个按钮放大当主角
      （这时用户要做的动作是"再来一次 / 继续"，而不是读时间） */
-  body.wide .card.alarm .num.s0{ font-size:30px; top:83px; opacity:.5; }
+  body.wide .card.alarm .num.s0{ font-size:30px; top:52px; opacity:.5; }
   body.wide .card.alarm .play,
-  body.wide .card.alarm .reset{ width:54px; height:54px; margin-top:19px; }
+  body.wide .card.alarm .reset{ width:54px; height:54px; margin-top:4px; }
   body.wide .card.alarm .play svg,
   body.wide .card.alarm .reset svg{ width:22px; height:22px; }
 
