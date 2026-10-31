@@ -39,8 +39,14 @@ contextBridge.exposeInMainWorld("wgt", {
   /* 日间/夜间：主进程决定，页面只负责换皮 */
   theme: THEME,
   onTheme: (fn) => ipcRenderer.on("wgt:theme", (_e, t) => fn(t)),
-  /* 倒计时到点：主进程响提示音 */
-  done: () => ipcRenderer.send("timer:done"),
+  /* 倒计时到点：主进程弹通知 + 响铃（info 里带设定分钟数 / 超时分钟数） */
+  done: (info) => ipcRenderer.send("timer:done", info || {}),
+  /* 用户点掉提醒 → 让主进程立刻停声 */
+  dismiss: () => ipcRenderer.send("timer:dismiss"),
+  /* 系统从睡眠/休眠回来，页面要按时间戳重算 */
+  onResume: (fn) => ipcRenderer.on("wgt:resume", () => fn()),
+  /* 用户点了系统通知 → 页面也要收掉红闪 */
+  onDismiss: (fn) => ipcRenderer.on("timer:dismiss", () => fn()),
   /* 桌面层输入桥：子窗口拿不到键盘焦点，双击改时间由幽灵输入窗代收 */
   imeBegin: (rect) => ipcRenderer.send("wgt:ime-begin", rect),
   imeEnd: () => ipcRenderer.send("wgt:ime-end"),

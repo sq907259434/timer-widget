@@ -208,13 +208,24 @@
   /* ============ 底部提示 ============ */
   /* ============ 运行态：大数字换成 mm:ss ============ */
   .card.run .num:not(.s0){ opacity:0; }
+  /* 运行态：竖线 + 液位当进度条留着，数字放到圆点右侧
+     （放回滚轮那一列会和竖线、圆点叠在一起，实测糊成一团）。 */
+  /* 数字在 .wheel 里，而 .wheel 只有 172px 宽 —— 不撑满整卡的话
+     right 是相对 172 算的，数字会被挤在竖线右边一点、还压在圆点上。
+     运行态把滚轮撑满，数字右对齐贴卡片右边，正好落在圆点右侧的空白区。 */
   .card.run .wheel{ width:100%; }
   .card.run .num.s0{
-    left:0; right:0; text-align:center; top:42%;
-    font-size:46px; font-weight:400; letter-spacing:1.5px;
+    left:auto; right:16px; text-align:right; top:50%;
+    font-size:30px; font-weight:300; letter-spacing:.5px;
   }
-  .card.run .ruler, .card.run .ticks, .card.run .ruler-fill, .card.run .ind{ opacity:0; }
-  .card.run .ind .bar{ opacity:.55; }
+  /* 刻度收起，只留竖线 + 液位；液位高度由 JS 按"剩余/设定"逐帧给 */
+  .card.run .ticks{ opacity:0; }
+  .card.run .ruler, .card.run .ruler-fill, .card.run .ind{ opacity:1; }
+  /* 红条和数字在同一水平线上，运行时要收掉 */
+  .card.run .ind .bar{ opacity:0; }
+  .card.run .ruler-fill{ transition:opacity .2s ease; }   /* 高度每帧都在变，不能带过渡 */
+  /* 超时态：同一位置放一句"超时 N 分"，字号要小 */
+  .card.over .num.s0{ font-size:22px; font-weight:300; letter-spacing:0; }
 
   /* ============ 到点：整卡红闪 ============ */
   @keyframes flash{
@@ -413,6 +424,7 @@ if (!window.wgt) {
     onBackdrop: on, onBdFull: on, onBdPos: on, onBdDragEnd: on, onShowLook: on, onPreset: on,
     onImeText: on, onImeCommit: on, onImeCancel: on, onImeBlur: on,
     onReset: on, onTheme: on, theme: "dark",
+    dismiss: noop, onResume: on, onDismiss: on,
   };
 }
 
@@ -541,6 +553,10 @@ function render() {
   }
   if (mode !== "run" && mode !== "pause") {
     SLOTS.forEach(([id, off]) => { $(id).textContent = label(minutes + off); });
+  } else {
+    /* 运行/暂停：液位从顶端向圆点收缩，长度 = 剩余/设定 */
+    const ratio = totalMs > 0 ? Math.max(0, Math.min(1, remain / totalMs)) : 0;
+    $("rulerFill").style.height = (ratio * 50) + "%";
   }
   syncHeight();
 }
@@ -556,16 +572,33 @@ function setMinutes(v, keepRemain) {
   if (mode !== "run") mode = "idle";
   stopAlarm();
   render();
+  saveRun();
+}
+
+/* ================= 存档：让时间在睡眠 / 重启后仍然准 =================
+   只存"结束时间戳"（run）或"剩余毫秒"（pause），不存倒计时过程。
+   回来时按 Date.now() 重算，睡多久都不会漂。 */
+const RUN_KEY = "timer_run_v1";
+let totalMs = 0;              /* 本次设定的总时长，用来算进度比例 */
+
+function saveRun() {
+  try {
+    localStorage.setItem(RUN_KEY, JSON.stringify({
+      mode, minutes, endAt, remain, totalMs,
+    }));
+  } catch (e) {}
 }
 
 function start() {
   if (minutes <= 0) return;
-  remain = minutes * 60000;
+  totalMs = minutes * 60000;
+  remain = totalMs;
   endAt = Date.now() + remain;
   mode = "run";
   stopAlarm();
   render();
   tickLoop();
+  saveRun();
 }
 
 function resume() {
@@ -574,6 +607,7 @@ function resume() {
   mode = "run";
   render();
   tickLoop();
+  saveRun();
 }
 
 function pause() {
@@ -581,6 +615,7 @@ function pause() {
   mode = "pause";
   if (raf) { cancelAnimationFrame(raf); raf = null; }
   render();
+  saveRun();
 }
 
 function tickLoop() {
@@ -596,21 +631,26 @@ function tickLoop() {
 }
 
 /* ================= 到点 ================= */
-function finish() {
+function finish(overdueMs) {
   mode = "idle";
   remain = 0;
   alarmOn = true;
   cardEl.classList.add("alarm");
-  $("n0").textContent = "00:00";
+  const over = Math.max(0, Math.round((overdueMs || 0) / 60000));
+  cardEl.classList.toggle("over", over >= 1);
+  $("n0").textContent = over >= 1 ? "超时 " + over + " 分" : "00:00";
   $("icoPlay").classList.add("on");
   $("icoPause").classList.remove("on");
-  try { window.wgt.done(); } catch (e) {}   /* 主进程响三声 */
+  /* 主进程：弹系统通知 + 响铃（带设定时长和超时分钟数） */
+  try { window.wgt.done({ minutes: minutes, overdueMin: over }); } catch (e) {}
+  saveRun();
 }
 
 function stopAlarm() {
   if (!alarmOn) return;
   alarmOn = false;
-  cardEl.classList.remove("alarm");
+  cardEl.classList.remove("alarm", "over");
+  try { window.wgt.dismiss(); } catch (e) {}   /* 让主进程立刻停声 */
 }
 
 /* ================= 交互：滚轮 ================= */
@@ -787,10 +827,65 @@ if (window.wgt.onPreset) {
   });
 }
 
+/* ================= 从存档恢复 =================
+   运行中：按结束时间戳重算剩余（睡多久都不漂）；
+   期间已经到点：立刻提醒，并标注超时了多久；
+   暂停中：原样恢复剩余毫秒。 */
+function restoreRun() {
+  let o = null;
+  try { o = JSON.parse(localStorage.getItem(RUN_KEY) || "null"); } catch (e) {}
+  if (!o || typeof o !== "object") return false;
+
+  if (Number.isFinite(o.minutes)) minutes = clampMin(o.minutes);
+  totalMs = Number(o.totalMs) > 0 ? Number(o.totalMs) : minutes * 60000;
+
+  if (o.mode === "run" && Number.isFinite(o.endAt)) {
+    const left = o.endAt - Date.now();
+    if (left <= 0) {                 /* 关机/睡眠期间就到点了 */
+      mode = "run";
+      remain = 0;
+      finish(-left);
+      return true;
+    }
+    mode = "run";
+    remain = left;
+    endAt = o.endAt;
+    render();
+    tickLoop();
+    return true;
+  }
+
+  if (o.mode === "pause" && Number.isFinite(o.remain)) {
+    mode = "pause";
+    remain = Math.max(0, o.remain);
+    endAt = Date.now() + remain;
+    render();
+    return true;
+  }
+  return false;
+}
+
 /* ================= 启动 ================= */
 document.body.classList.add(window.wgt && window.wgt.acrylic ? "acrylic" : "solid");
-remain = minutes * 60000;
-render();
+if (!restoreRun()) {
+  remain = minutes * 60000;
+  render();
+}
+
+/* 睡眠/休眠回来：按结束时间戳重算，别让数字停在睡前那一刻 */
+if (window.wgt.onResume) {
+  window.wgt.onResume(() => {
+    if (mode !== "run") return;
+    const left = endAt - Date.now();
+    if (left <= 0) { remain = 0; finish(-left); }
+    else { remain = left; render(); tickLoop(); }
+  });
+}
+
+/* 用户点了系统通知：收掉红闪和声音 */
+if (window.wgt.onDismiss) {
+  window.wgt.onDismiss(() => { stopAlarm(); setMinutes(minutes); });
+}
 </script>
 </body>
 </html>

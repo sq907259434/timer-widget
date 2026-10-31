@@ -2,7 +2,10 @@
    和「待办清单」「天气卡片」同一套骨架（视觉与交互独立，代码不共用）：贴进桌面层、桌面快照做背景、
    主进程跟光标拖动、幽灵输入窗代收键盘。本卡只做一件事：倒计时。 */
 
-const { app, BrowserWindow, ipcMain, Menu, screen, globalShortcut, shell, nativeTheme } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, screen, globalShortcut, shell, nativeTheme, Notification, powerMonitor } = require("electron");
+
+/* Windows 上不设 AppUserModelId，toast 通知根本不弹（静默失败）。 */
+try { app.setAppUserModelId("com.timercard.desktop"); } catch (e) {}
 const path = require("path");
 const fs = require("fs");
 const { execFile } = require("child_process");
@@ -1016,6 +1019,64 @@ async function setDesktopMenu(on) {
   return getDesktopMenu();
 }
 
+/* ================= 到点提醒 =================
+   原来只有 shell.beep() 三声，人不在电脑前就错过。现在：
+     · 系统 toast 通知（点通知 = 我知道了）
+     · 响铃可循环，直到用户点掉（设置里可关）
+   两者都用 state.sound 里的开关控制。 */
+let alarmTimer = null, alarmBeeps = 0, alarmNote = null;
+
+function soundCfg() {
+  const s = readState().sound || {};
+  return { mute: s.mute === true, loop: s.loop !== false };   /* 默认：不静音、循环响 */
+}
+
+function stopAlarmSound() {
+  if (alarmTimer) { clearTimeout(alarmTimer); alarmTimer = null; }
+  alarmBeeps = 0;
+  if (alarmNote) { try { alarmNote.close(); } catch (e) {} alarmNote = null; }
+}
+
+function startAlarm(info) {
+  stopAlarmSound();
+  const cfg = soundCfg();
+
+  if (!cfg.mute) {
+    const tick = () => {
+      alarmBeeps++;
+      try { shell.beep(); } catch (e) {}
+      /* 不循环：响三声就收；循环：一直响到用户点掉 */
+      if (!cfg.loop && alarmBeeps >= 3) { alarmTimer = null; return; }
+      alarmTimer = setTimeout(tick, 1200);
+    };
+    tick();
+  }
+
+  const mins = Number(info && info.minutes) || 0;
+  const over = Number(info && info.overdueMin) || 0;
+  try {
+    fs.appendFileSync(path.join(app.getPath("userData"), "win-events.log"),
+      new Date().toISOString() + ` alarm minutes=${mins} overdue=${over} mute=${cfg.mute} loop=${cfg.loop} toast=${Notification.isSupported()}\n`);
+  } catch (e) {}
+  const body = over > 0
+    ? `已超时 ${over} 分钟`
+    : (mins > 0 ? `设定的 ${mins} 分钟已到` : "时间到了");
+
+  try {
+    if (Notification.isSupported()) {
+      alarmNote = new Notification({ title: "倒计时结束", body: body, silent: true });
+      alarmNote.on("click", () => {
+        stopAlarmSound();
+        if (cardWin && !cardWin.isDestroyed()) {
+          try { cardWin.webContents.send("timer:dismiss"); } catch (e) {}
+          try { cardWin.show(); } catch (e) {}
+        }
+      });
+      alarmNote.show();
+    }
+  } catch (e) { /* 通知不可用不影响响铃和闪红 */ }
+}
+
 async function buildMenu() {
   const st = readState();
   const onTop = st.top === true;
@@ -1037,6 +1098,18 @@ async function buildMenu() {
         { label: "夜间（深色）", type: "radio", checked: themeSetting() === "dark",
           click: () => { patchState({ theme: "dark" }); pushTheme(); } },
       ],
+    },
+    {
+      label: "到点静音",
+      type: "checkbox",
+      checked: (readState().sound || {}).mute === true,
+      click: (mi) => { patchState({ sound: { ...(readState().sound || {}), mute: !!mi.checked } }); },
+    },
+    {
+      label: "声音循环响（关掉只响三声）",
+      type: "checkbox",
+      checked: (readState().sound || {}).loop !== false,
+      click: (mi) => { patchState({ sound: { ...(readState().sound || {}), loop: !!mi.checked } }); },
     },
     { label: "外观设置（透明度 / 磨砂）", click: () => cardWin && cardWin.webContents.send("wgt:show-look") },
     { label: "刷新桌面背景", click: () => refreshSnapshot("menu") },
@@ -1132,16 +1205,20 @@ app.whenReady().then(() => {
     return look;
   });
 
-  /* 倒计时到点：主进程响三声系统提示音（页面只管闪红） */
-  ipcMain.on("timer:done", () => {
-    let n = 0;
-    const beep = () => {
-      if (n++ >= 3) return;
-      try { shell.beep(); } catch (e) {}
-      setTimeout(beep, 420);
-    };
-    beep();
-  });
+  /* 倒计时到点：弹系统通知 + 响铃（页面只管闪红）
+     设置里两个开关：到点静音 / 循环响（不循环就只响三声）。 */
+  ipcMain.on("timer:done", (_e, info) => startAlarm(info));
+  /* 用户点掉提醒（点卡片 / 点通知）→ 立刻停声 */
+  ipcMain.on("timer:dismiss", () => stopAlarmSound());
+
+  /* 睡眠/休眠唤醒后，页面要按时间戳重算（否则睡 10 分钟回来还是旧数字） */
+  try {
+    powerMonitor.on("resume", () => {
+      if (cardWin && !cardWin.isDestroyed()) {
+        try { cardWin.webContents.send("wgt:resume"); } catch (e) {}
+      }
+    });
+  } catch (e) {}
 
   ipcMain.on("wgt:close", (e) => {
     const w = senderWin(e);
