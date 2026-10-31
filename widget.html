@@ -303,7 +303,14 @@
      顶部：← / 切换 / × 三个按钮常显；下面一行：重置 · 数字 · 播放 */
   /* 卡片缩到 213x93 后：横向内边距收到 8，数字与按钮中心都落在 52px。
      数字 46px 时文字宽 113px，可用 117px —— 刚好放得下（再小就会压到按钮）。 */
-  body.wide .card .num.s0{ top:52px; font-size:46px; letter-spacing:-1px; }
+  /* 平时没有按钮，数字可以放大、位置略高（不然一张空卡很空）；
+     鼠标移上去按钮出现，数字缩回 46px 让位。58px 时文字宽约 142px，
+     仍小于卡片 213，不会溢出。 */
+  body.wide .card .num.s0{
+    top:46px; font-size:58px; letter-spacing:-1px;
+    transition:top .16s ease, font-size .16s ease;
+  }
+  body.wide .card:not(.alarm):hover .num.s0{ top:52px; font-size:46px; }
   /* 横版运行中默认只有数字；鼠标移上去才出现两个按钮；
      到点之后按钮常显（这时用户要做的就是"再来一次/继续"） */
   body.wide .card .btns{
