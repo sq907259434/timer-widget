@@ -419,16 +419,10 @@ const _rgn = (() => {
 })();
 
 function applyCardRegion(w, force) {
-  /* 真透明模式：不要窗口区域。
-     圆角由页面 CSS 画（border-radius + clip-path），窗口其余像素就是真透明，
-     这样 Windows 才会把这个窗口和后面的东西做透明混合 —— 能透出应用窗口。
-     代价：圆角外那一小块也会挡住鼠标（卡片本身铺满窗口，影响很小）。 */
-  if (readState().noRegion === true) {
-    try { _rgn.SetWindowRgn(hwndOf(w), null, true); } catch (e) {}
-    try { w.webContents.send("wgt:noreg", true); } catch (e) {}
-    return;
-  }
-  try { w.webContents.send("wgt:noreg", false); } catch (e) {}
+  /* ★ 这里曾经有过一个"真透明"分支：不设窗口区域、圆角交给 CSS。
+     实测不可行 —— 卡片是满铺窗口的，不设区域 = 窗口变成直角矩形，
+     四个角直接露出来（用户报的"四角露边又出现了"）。
+     倒计时卡的真透明收益只有那四个角，代价却是丢掉圆角，不划算，撤掉。 */
   if (!_rgn || !w || w.isDestroyed()) return;
   /* ★ 不强制时先问一句"区域还在不在"。
      SetParent 挂进 Progman 会把窗口区域冲掉（实测：挂之前 GetWindowRgn=2，
@@ -1339,15 +1333,6 @@ async function buildMenu() {
       type: "checkbox",
       checked: st.desktopLayer === true,
       click: (item) => { toggleDesktopLayer(item.checked); },
-    },
-    {
-      label: "真透明（透出后面的窗口）",
-      type: "checkbox",
-      checked: readState().noRegion === true,
-      click: (item) => {
-        patchState({ noRegion: !!item.checked });
-        if (cardWin && !cardWin.isDestroyed()) applyCardRegion(cardWin, true);
-      },
     },
     {
       label: "窗口置顶（会脱离桌面层）",
