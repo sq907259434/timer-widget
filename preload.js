@@ -42,10 +42,6 @@ contextBridge.exposeInMainWorld("wgt", {
   onLook: (fn) => ipcRenderer.on("wgt:look", (_e, v) => fn(v || {})),
   /* 真透明模式：页面据此关掉桌面快照层，让真实背景透上来 */
   onNoReg: (fn) => ipcRenderer.on("wgt:noreg", (_e, v) => fn(!!v)),
-  /* 完整 / 迷你横条 布局切换 */
-  onLayout: (fn) => ipcRenderer.on("wgt:layout", (_e, v) => fn(v)),
-  getLayout: () => ipcRenderer.invoke("wgt:get-layout"),
-  setLayout: (v) => ipcRenderer.send("wgt:set-layout", v),
   /* 卡片上的图钉：钉在最前面 */
   getTop: () => ipcRenderer.invoke("wgt:get-top"),
   toggleTop: () => ipcRenderer.send("wgt:toggle-top"),
