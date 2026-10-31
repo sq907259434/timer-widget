@@ -446,8 +446,11 @@ function applyCardRegion(w, force) {
   const rad = Math.max(2, Math.round(30 * s));
   let hrgn = 0;
   try {
+    /* ★ 最后两个参数是"椭圆的长和宽"，不是半径 —— 圆角半径 = 这个值 / 2。
+       一直传 rad，实际圆角只有 15px，而 CSS 是 30px：窗口区域比卡片"方"了 15px，
+       四个角就露出一条弧形的缝（拖动时最明显，缝里是底下的桌面快照）。 */
     hrgn = Number(_rgn.CreateRoundRectRgn(
-      m, m, W - m + 1, H - m + 1, rad, rad));
+      m, m, W - m + 1, H - m + 1, rad * 2, rad * 2));
     if (hrgn) _rgn.SetWindowRgn(hwndOf(w), hrgn, true);
   } catch (e) {}
 }
