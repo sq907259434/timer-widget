@@ -373,9 +373,10 @@
     position:absolute; width:34px; height:34px; z-index:30;
     cursor:nwse-resize;
   }
-  .rz-tl{ left:0; top:0; }
+  /* 顶部两个角不做缩放：那一排是 ← / 图钉 / ×，热区压上去太容易误触
+     （用户反馈"顶部的区域就不要有缩放"）。只留底部两个角。 */
+  .rz-tl, .rz-tr{ display:none; }
   .rz-br{ right:0; bottom:0; }
-  .rz-tr{ right:0; top:0; cursor:nesw-resize; }
   .rz-bl{ left:0; bottom:0; cursor:nesw-resize; }
   /* 角上的小弧线提示（只在悬停时出现） */
   .rz::after{

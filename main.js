@@ -525,6 +525,75 @@ function resizeBegin(w, corner) {
   }, 16);
 }
 
+/* ================= 置顶（菜单和图钉共用） =================
+   贴进桌面层时卡片是 Progman 的子窗口，setAlwaysOnTop 对子窗口无效 ——
+   所以"置顶"必须先把卡片从桌面层摘出来，两者互斥。 */
+async function setTopState(w, want) {
+  const on = !!want;
+  patchState({ top: on, desktopLayer: !on });
+  if (!w || w.isDestroyed()) return on;
+  if (on) {
+    try { if (DL && DL.isOn && DL.isOn()) await DL.set(false); } catch (e) {}
+    try { w.setAlwaysOnTop(true, "floating"); } catch (e) {}
+  } else {
+    try { w.setAlwaysOnTop(false); } catch (e) {}
+    try { if (DL) await DL.set(true); } catch (e) {}
+  }
+  try { w.webContents.send("wgt:top", on); } catch (e) {}
+  return on;
+}
+
+/* ================= 外观浮窗 =================
+   卡片只有 260x240，面板放里面必然挡住内容、边角还会被圆角裁掉。
+   所以做成一个独立小窗，贴在卡片外侧；失焦自动关。 */
+let lookWin = null;
+
+function closeLookWin() {
+  if (!lookWin || lookWin.isDestroyed()) { lookWin = null; return; }
+  try { lookWin.close(); } catch (e) {}
+  lookWin = null;
+}
+
+function openLookWin() {
+  if (lookWin && !lookWin.isDestroyed()) { lookWin.focus(); return; }
+  const cw = cardWin;
+  if (!cw || cw.isDestroyed()) return;
+
+  const W = 236, H = 74, GAP = 10;
+  const b = cw.getBounds();
+  let d = screen.getDisplayMatching(b);
+  const a = d.workArea;
+
+  /* 默认贴在卡片下面、水平居中；下面放不下就放上面 */
+  let x = Math.round(b.x + (b.width - W) / 2);
+  let y = b.y + b.height + GAP;
+  if (y + H > a.y + a.height - 6) y = b.y - H - GAP;      /* 下面没地方 → 放上面 */
+  x = Math.min(Math.max(x, a.x + 6), a.x + a.width - W - 6);
+  y = Math.min(Math.max(y, a.y + 6), a.y + a.height - H - 6);
+
+  lookWin = new BrowserWindow({
+    width: W, height: H, x: Math.round(x), y: Math.round(y),
+    frame: false, transparent: true, backgroundColor: "#00000000",
+    resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+    skipTaskbar: true, alwaysOnTop: true, hasShadow: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "look-preload.js"),
+      contextIsolation: true, nodeIntegration: false,
+      additionalArguments: ["--wgt-theme=" + resolvedTheme()],
+    },
+  });
+  lookWin.loadFile(path.join(__dirname, "look.html"));
+  lookWin.once("ready-to-show", () => { try { lookWin.show(); } catch (e) {} });
+  lookWin.on("blur", () => closeLookWin());     /* 点别处就收起 */
+  lookWin.on("closed", () => { lookWin = null; });
+}
+
+function toggleLookWin() {
+  if (lookWin && !lookWin.isDestroyed()) closeLookWin();
+  else openLookWin();
+}
+
 function dragBegin(w) {
   dragStop(w, false);
   if (!_drg) return;
@@ -1242,7 +1311,7 @@ async function buildMenu() {
       checked: (readState().sound || {}).loop !== false,
       click: (mi) => { patchState({ sound: { ...(readState().sound || {}), loop: !!mi.checked } }); },
     },
-    { label: "外观设置（透明度 / 磨砂）…", click: () => toggleLookWin() },
+    { label: "外观设置（透明度）…", click: () => toggleLookWin() },
     { label: "刷新桌面背景", click: () => refreshSnapshot("menu") },
     { type: "separator" },
     { type: "separator" },

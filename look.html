@@ -19,7 +19,7 @@
     border-radius:14px;
     background:rgba(16,20,28,.96);
     box-shadow:0 8px 26px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.09);
-    padding:12px 14px 10px;
+    padding:10px 14px 8px;
   }
   body.light .box{
     background:rgba(252,252,252,.98);
@@ -28,7 +28,7 @@
   }
   h4{
     cursor:grab;
-    margin:0 0 8px; font-size:11px; font-weight:600; letter-spacing:.4px;
+    margin:0 0 6px; font-size:11px; font-weight:600; letter-spacing:.4px;
     color:rgba(255,255,255,.55);
   }
   body.light h4{ color:rgba(0,0,0,.5); }
@@ -67,7 +67,6 @@
     <h4>外观</h4>
     <button class="x" id="x" title="关闭">×</button>
     <label class="row"><span>透明度</span><input id="a" type="range" min="8" max="100" step="1"><b id="av"></b></label>
-    <label class="row"><span>磨砂</span><input id="f" type="range" min="0" max="20" step="1"><b id="fv"></b></label>
   </div>
 <script>
   const $ = (id) => document.getElementById(id);
@@ -79,24 +78,21 @@
   /* 只刷新数字，不写盘 */
   function sync() {
     $("av").textContent = Math.round(Number($("a").value)) + "%";
-    $("fv").textContent = Math.round(Number($("f").value)) + "px";
   }
   function push() {
     sync();
     const alpha = Math.min(1, Math.max(0.08, Number($("a").value) / 100));
-    const frost = Math.min(20, Math.max(0, Number($("f").value)));
-    window.look.set({ alpha, frost });
+    /* 磨砂滑杆已移除，保留原值不动（真透明模式下它本来也不生效） */
+    window.look.set({ alpha });
   }
 
   $("a").addEventListener("input", push);
-  $("f").addEventListener("input", push);
   $("x").addEventListener("click", () => window.look.close());
 
   sync();   /* 先把数字填上，别等异步回来才有 */
   window.look.get().then((v) => {
     if (!v) return;
     $("a").value = Math.round((Number(v.alpha) || 1) * 100);
-    $("f").value = Math.round(Number(v.frost) || 0);
     sync();
   }).catch(() => {});
 </script>
