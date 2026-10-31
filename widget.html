@@ -299,6 +299,35 @@
 
 /* 简洁界面左上角的返回箭头：点了回到设定界面 */
   /* 中间上方的图钉：悬停出现，点了钉在最前（再点取消） */
+  /* ===== 横版（320x140）=====
+     顶部：← / 切换 / × 三个按钮常显；下面一行：重置 · 数字 · 播放 */
+  /* 和左右两个按钮同一条水平线（按钮中心 83px） */
+  body.wide .card .num.s0{ top:83px; font-size:46px; letter-spacing:-1px; }
+  body.wide .card .btns{
+    inset:0; padding:0 16px 0;
+    justify-content:space-between; align-items:center;
+    pointer-events:none;
+  }
+  body.wide .card .btns .play, body.wide .card .btns .reset{ pointer-events:auto; }
+  body.wide .card .play, body.wide .card .reset{ width:40px; height:40px; margin-top:26px; }
+  body.wide .card .play svg, body.wide .card .reset svg{ width:17px; height:17px; }
+  body.wide .card .back, body.wide .card .rot, body.wide .card .xclose{
+    display:grid; opacity:1; pointer-events:auto; transform:none;
+    top:9px; width:26px; height:26px;
+  }
+  body.wide .card .back{ left:12px; }
+  body.wide .card .rot{ left:50%; transform:translateX(-50%); }
+  body.wide .card .xclose{ right:12px; }
+  body.wide .card .since{ top:auto; bottom:8px; font-size:9px; }
+
+  /* 横版"到点"状态：数字退居次要，两个按钮放大当主角
+     （这时用户要做的动作是"再来一次 / 继续"，而不是读时间） */
+  body.wide .card.alarm .num.s0{ font-size:30px; top:83px; opacity:.5; }
+  body.wide .card.alarm .play,
+  body.wide .card.alarm .reset{ width:54px; height:54px; margin-top:19px; }
+  body.wide .card.alarm .play svg,
+  body.wide .card.alarm .reset svg{ width:22px; height:22px; }
+
   .rot{
     pointer-events:none;      /* 不可见时别响应鼠标，否则会弹 title 提示 */
     position:absolute; left:50%; top:11px; z-index:8;
@@ -757,7 +786,7 @@ if (!window.wgt) {
     onImeText: on, onImeCommit: on, onImeCancel: on, onImeBlur: on,
     onReset: on, onHint: on, onTheme: on, theme: "dark",
     setSound: noop, onShowSound: on, resizeBegin: noop, resizeEnd: noop,
-    getTop: () => Promise.resolve(false), toggleTop: noop, onTop: on, onLayout: on, setLayout: noop,
+    getTop: () => Promise.resolve(false), toggleTop: noop, onTop: on, getLayout: () => Promise.resolve("full"), setLayout: noop, onLayout: on, onLayout: on, setLayout: noop,
     editing: noop, onCommitEdit: on,
     dismiss: noop, onResume: on, onDismiss: on,
     getSound: () => Promise.resolve({ mute:false, loop:true, name:"a-dingdong" }),
@@ -905,12 +934,14 @@ function render() {
   if (mode === "run" || mode === "pause") {
     cardEl.classList.add("run");
     cardEl.classList.toggle("pause", mode === "pause");
-    cardEl.classList.toggle("mini", view === "mini");
+    cardEl.classList.toggle("mini",
+      view === "mini" || document.body.classList.contains("wide"));
     n0.textContent = mmss(remain);
     $("icoPlay").classList.toggle("on", mode === "pause");
     $("icoPause").classList.toggle("on", mode === "run");
   } else {
-    cardEl.classList.remove("run", "pause", "mini");
+    cardEl.classList.remove("run", "pause");
+    cardEl.classList.toggle("mini", document.body.classList.contains("wide"));
     n0.textContent = label(minutes);
     $("icoPlay").classList.add("on");
     $("icoPause").classList.remove("on");
@@ -1403,11 +1434,23 @@ document.addEventListener("mousedown", (e) => {
   if ($("sndPanel").classList.contains("on") && !e.target.closest("#sndPanel")) $("sndPanel").classList.remove("on");
 }, true);
 
-/* 横竖切换：先只放图标，功能还没做 */
+/* 横竖切换：方形 ⇄ 横版 */
 $("rot").addEventListener("click", (e) => {
   e.stopPropagation();
-  flashTip("横版还没做，先放个位置");
+  const wide = document.body.classList.contains("wide");
+  try { window.wgt.setLayout(wide ? "full" : "wide"); } catch (er) {}
 });
+
+/* 收到布局变更：换样式 + 重绘（横版里一律用简洁界面） */
+function applyLayoutClass(v) {
+  const wide = v === "wide";
+  document.body.classList.toggle("wide", wide);
+  render();
+}
+if (window.wgt.onLayout) window.wgt.onLayout(applyLayoutClass);
+if (window.wgt.getLayout) {
+  window.wgt.getLayout().then(applyLayoutClass).catch(() => {});
+}
 
 /* 小叉：退出（和右键菜单的"退出"同一条路） */
 $("xclose").addEventListener("click", () => {

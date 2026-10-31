@@ -46,6 +46,10 @@ contextBridge.exposeInMainWorld("wgt", {
   getTop: () => ipcRenderer.invoke("wgt:get-top"),
   toggleTop: () => ipcRenderer.send("wgt:toggle-top"),
   onTop: (fn) => ipcRenderer.on("wgt:top", (_e, v) => fn(!!v)),
+  /* 方形 / 横版 切换 */
+  getLayout: () => ipcRenderer.invoke("wgt:get-layout"),
+  setLayout: (v) => ipcRenderer.send("wgt:set-layout", v),
+  onLayout: (fn) => ipcRenderer.on("wgt:layout", (_e, v) => fn(v)),
   /* 右键菜单里的预设时长（分钟） */
   onPreset: (fn) => ipcRenderer.on("wgt:preset", (_e, m) => fn(Number(m) || 0)),
   /* 右键菜单里的"重置计时" */
