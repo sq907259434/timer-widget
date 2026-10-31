@@ -299,7 +299,7 @@
 
 /* 简洁界面左上角的返回箭头：点了回到设定界面 */
   /* 中间上方的图钉：悬停出现，点了钉在最前（再点取消） */
-  .pin{
+  .rot{
     pointer-events:none;      /* 不可见时别响应鼠标，否则会弹 title 提示 */
     position:absolute; left:50%; top:11px; z-index:8;
     width:26px; height:26px; padding:0; border:0; border-radius:50%;
@@ -311,19 +311,12 @@
     transform:translateX(-50%) translateY(-3px);
     transition:opacity .16s ease, transform .16s ease, background .16s ease, color .16s ease;
   }
-  .pin svg{ width:13px; height:13px; }
+  .rot svg{ width:13px; height:13px; }
   /* 只有鼠标挪上去才出现（钉住了也一样，只是变红做提示） */
-  .card.mini:hover .pin,
-  .card.pinned:hover .pin{ opacity:1; transform:translateX(-50%); pointer-events:auto; }
-  .pin:hover{ background:rgba(255,255,255,.18); color:#fff; }
-  /* 已钉住：仍然只在悬停时出现；用低饱和的灰蓝做提示，不用红（太扎眼） */
-  .card.pinned .pin{
-    background:rgba(156,180,216,.18); color:#BFD0E8;
-    box-shadow:inset 0 0 0 1px rgba(156,180,216,.35);
-  }
-  body.light .pin{ background:rgba(0,0,0,.07); color:rgba(0,0,0,.55); }
-  body.light .pin:hover{ background:rgba(0,0,0,.14); color:#111; }
-  body.light .card.pinned .pin{ background:rgba(90,120,160,.13); color:#456687; box-shadow:inset 0 0 0 1px rgba(90,120,160,.28); }
+  .card.mini:hover .rot{ opacity:1; transform:translateX(-50%); pointer-events:auto; }
+  .rot:hover{ background:rgba(255,255,255,.18); color:#fff; }
+  body.light .rot{ background:rgba(0,0,0,.07); color:rgba(0,0,0,.55); }
+  body.light .rot:hover{ background:rgba(0,0,0,.14); color:#111; }
 
   .back{
     /* 设定界面里它不该存在：opacity:0 的元素照样能被悬停、照样弹 title 提示，
@@ -360,7 +353,6 @@
   .card:hover .xclose{ opacity:1; transform:none; }
   .xclose:hover{ background:rgba(255,90,90,.85); color:#fff; }
   /* 鼠标压到右上角缩放热区时把叉藏起来，否则角就拖不动了 */
-  .rz-tr:hover ~ .xclose{ opacity:0; pointer-events:none; }
   body.light .xclose{ background:rgba(0,0,0,.07); color:rgba(0,0,0,.55); }
   body.light .xclose:hover{ background:#E8564E; color:#fff; }
 
@@ -699,10 +691,13 @@
   <i class="rz rz-bl" data-c="bl"></i>
   <i class="rz rz-br" data-c="br"></i>
 
-  <button class="pin" id="pin" title="钉在最前面">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M9 3h6l-1 6 3.5 3.5H6.5L10 9 9 3z"/>
-      <path d="M12 12.5V21"/>
+  <button class="rot" id="rot" title="横竖切换（暂未开放）">
+    <!-- 横竖屏切换：竖块 + 横条 + 箭头 -->
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="1.8" y="5.2" width="7.6" height="13.6" rx="2"/>
+      <rect x="13.4" y="9.4" width="8.8" height="5.2" rx="2"/>
+      <path d="M10.1 12h2.5"/>
+      <path d="M11.9 10.4l1.7 1.6-1.7 1.6"/>
     </svg>
   </button>
 
@@ -1408,18 +1403,11 @@ document.addEventListener("mousedown", (e) => {
   if ($("sndPanel").classList.contains("on") && !e.target.closest("#sndPanel")) $("sndPanel").classList.remove("on");
 }, true);
 
-/* 图钉：钉在最前面（和右键菜单"窗口置顶"同一条路） */
-let pinned = false;
-function setPinned(v) {
-  pinned = !!v;
-  cardEl.classList.toggle("pinned", pinned);
-}
-$("pin").addEventListener("click", (e) => {
+/* 横竖切换：先只放图标，功能还没做 */
+$("rot").addEventListener("click", (e) => {
   e.stopPropagation();
-  try { window.wgt.toggleTop(); } catch (er) {}
+  flashTip("横版还没做，先放个位置");
 });
-if (window.wgt.getTop) window.wgt.getTop().then(setPinned).catch(() => {});
-if (window.wgt.onTop) window.wgt.onTop(setPinned);
 
 /* 小叉：退出（和右键菜单的"退出"同一条路） */
 $("xclose").addEventListener("click", () => {
