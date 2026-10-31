@@ -967,6 +967,7 @@ function render() {
     $("rulerFill").style.height = (ratio * half) + "px";
   }
   syncHeight();
+  ensureSquareWhenIdle();
 }
 
 /* 页面高度固定，这里只是让主进程知道"没变化"（贴桌面层时窗口尺寸由主进程定） */
@@ -1445,6 +1446,14 @@ $("back").addEventListener("click", () => {
 document.addEventListener("mousedown", (e) => {
   if ($("sndPanel").classList.contains("on") && !e.target.closest("#sndPanel")) $("sndPanel").classList.remove("on");
 }, true);
+
+/* 设置界面只保留方形：横版只用于"倒计时中"。
+   否则存档停在横版时重启，滚轮会被塞进 213x93 的横条里。 */
+function ensureSquareWhenIdle() {
+  if (!document.body.classList.contains("wide")) return;
+  const running = mode === "run" || mode === "pause" || cardEl.classList.contains("alarm");
+  if (!running) { try { window.wgt.setLayout("full"); } catch (e) {} }
+}
 
 /* 横竖切换：方形 ⇄ 横版 */
 $("rot").addEventListener("click", (e) => {
