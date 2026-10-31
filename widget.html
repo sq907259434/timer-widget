@@ -311,10 +311,15 @@
   body.wide .card .btns .play, body.wide .card .btns .reset{ pointer-events:auto; }
   body.wide .card .play, body.wide .card .reset{ width:40px; height:40px; margin-top:26px; }
   body.wide .card .play svg, body.wide .card .reset svg{ width:17px; height:17px; }
+  /* 顶部三个也是"挪上去才出现"，和方形里一致 */
   body.wide .card .back, body.wide .card .rot, body.wide .card .xclose{
-    display:grid; opacity:1; pointer-events:auto; transform:none;
+    display:grid; opacity:0; pointer-events:none; transform:none;
     top:9px; width:26px; height:26px;
+    transition:opacity .16s ease;
   }
+  body.wide .card:hover .back,
+  body.wide .card:hover .rot,
+  body.wide .card:hover .xclose{ opacity:1; pointer-events:auto; }
   body.wide .card .back{ left:12px; }
   body.wide .card .rot{ left:50%; transform:translateX(-50%); }
   body.wide .card .xclose{ right:12px; }
