@@ -30,9 +30,11 @@
 
   /* 桌面快照背景：真透明在桌面层里只透壁纸、透不出图标，所以垫一张快照 */
   #bd{
-    /* 圆角要和 .card 一致：卡片不透明时（alpha=1），窗口边缘那 1px 会漏出
-       这层模糊过的桌面快照，看起来就是一圈"白边"。裁掉它就没有了。 */
+    /* ★ 关键：filter:blur 会把结果往元素盒子外面扩，border-radius 只裁盒子本身、
+       裁不住模糊外溢 —— 四角那圈"露边"就是它。
+       clip-path 作用在滤镜之后，能真正把外溢裁掉（半径必须和 .card 一致）。 */
     border-radius:30px;
+    clip-path:inset(0 round 30px);
     position:absolute; inset:0; z-index:0; pointer-events:none;
     background-size:100% 100%; background-repeat:no-repeat;
     opacity:0; transition:opacity .25s ease;

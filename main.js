@@ -419,10 +419,14 @@ const _rgn = (() => {
 })();
 
 function applyCardRegion(w, force) {
-  /* ★ 这里曾经有过一个"真透明"分支：不设窗口区域、圆角交给 CSS。
-     实测不可行 —— 卡片是满铺窗口的，不设区域 = 窗口变成直角矩形，
-     四个角直接露出来（用户报的"四角露边又出现了"）。
-     倒计时卡的真透明收益只有那四个角，代价却是丢掉圆角，不划算，撤掉。 */
+  /* 真透明：不设窗口区域。前提是窗口以 transparent:true 创建（见 USE_ACRYLIC），
+     否则不透明的窗口会在四角露出直角。 */
+  if (readState().noRegion === true) {
+    try { _rgn.SetWindowRgn(hwndOf(w), null, true); } catch (e) {}
+    try { w.webContents.send("wgt:noreg", true); } catch (e) {}
+    return;
+  }
+  try { w.webContents.send("wgt:noreg", false); } catch (e) {}
   if (!_rgn || !w || w.isDestroyed()) return;
   /* ★ 不强制时先问一句"区域还在不在"。
      SetParent 挂进 Progman 会把窗口区域冲掉（实测：挂之前 GetWindowRgn=2，
@@ -1335,6 +1339,17 @@ async function buildMenu() {
       click: (item) => { toggleDesktopLayer(item.checked); },
     },
     {
+      label: "全局透明（透出桌面/窗口，需重启）",
+      type: "checkbox",
+      checked: readState().noRegion === true,
+      click: (item) => {
+        patchState({ noRegion: !!item.checked });
+        /* transparent 是窗口创建时选项，改完必须重启才生效 */
+        app.relaunch();
+        app.exit(0);
+      },
+    },
+    {
       label: "窗口置顶（会脱离桌面层）",
       type: "checkbox",
       checked: onTop,
@@ -1358,7 +1373,10 @@ app.whenReady().then(() => {
   /* 系统切深浅色时，跟随系统的那张卡要立刻变 */
   try { nativeTheme.on("updated", () => { if (themeSetting() === "auto") pushTheme(); }); } catch (e) {}
   /* 这里才定磨砂/投影边距：贴进桌面层时系统磨砂不可用，必须改走透明自绘 */
-  USE_ACRYLIC = acrylicSupported() && !desktopLayerOn();
+  /* ★ 真透明必须放弃 acrylic：acrylic 的窗口是不透明的，一旦不设窗口区域，
+     四角就变成直角（2.5.0 那次翻车就是这么来的）。
+     照待办卡的做法：真透明 = 不设区域 + 窗口 transparent。 */
+  USE_ACRYLIC = acrylicSupported() && !desktopLayerOn() && readState().noRegion !== true;
   PAD = 0;
   createWindow();
   startDesktopWatch();   /* 桌面上松开左键 / 20 秒兜底 → 重抓快照 */
