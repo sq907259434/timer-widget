@@ -728,6 +728,10 @@ function createWindow() {
   }
 
   const z = readScale();
+  try {
+    fs.appendFileSync(path.join(app.getPath("userData"), "win-events.log"),
+      new Date().toISOString() + ` scale resolved=${z} raw=${JSON.stringify(readState().scale)}\n`);
+  } catch (e) {}
   const WIN_W = Math.round((CARD_W + PAD * 2) * z);
   const WIN_H = Math.round((CARD_H + PAD * 2) * z);
 
