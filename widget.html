@@ -277,6 +277,17 @@
   .hint.on{ opacity:1; }
   body.light .hint{ color:rgba(0,0,0,.42); }
 
+  /* 到点之后："已过 3 分" —— 声音停了以后，这是唯一还在动的信息 */
+  .since{
+    position:absolute; left:0; right:0; top:64%; z-index:5;
+    text-align:center; font-size:11px; letter-spacing:.5px;
+    color:rgba(255,150,140,.9);
+    opacity:0; transition:opacity .25s ease;
+    pointer-events:none;
+  }
+  .card.alarm .since{ opacity:1; }
+  body.light .since{ color:#C0392B; }
+
   /* 一句小提示（超范围 / 看不懂） */
   .tip{
     position:absolute; left:0; right:0; bottom:8px; z-index:9;
@@ -532,6 +543,8 @@
   <div class="ind"><i class="dot"></i><i class="bar"></i></div>
 
   <div class="hint" id="hint">滚轮调时间 · 双击输入</div>
+
+  <div class="since" id="since"></div>
 
   <div class="tip" id="tip"></div>
 
@@ -850,6 +863,26 @@ function tickLoop() {
 }
 
 /* ================= 到点 ================= */
+/* 到点之后每隔一秒刷一次"已过多久"，点掉就停 */
+let sinceTimer = 0, alarmAt = 0;
+function stopSince() {
+  clearInterval(sinceTimer);
+  sinceTimer = 0;
+  $("since").textContent = "";
+}
+function startSince(fromMs) {
+  stopSince();
+  alarmAt = Date.now() - Math.max(0, fromMs || 0);
+  const tick = () => {
+    const sec = Math.max(0, Math.floor((Date.now() - alarmAt) / 1000));
+    $("since").textContent = sec < 60
+      ? "已过 " + sec + " 秒"
+      : "已过 " + Math.floor(sec / 60) + " 分";
+  };
+  tick();
+  sinceTimer = setInterval(tick, 1000);
+}
+
 function finish(overdueMs) {
   mode = "idle";
   remain = 0;
@@ -862,6 +895,7 @@ function finish(overdueMs) {
   $("n0").textContent = over >= 1 ? "超时 " + over + " 分" : "00:00";
   $("icoPlay").classList.add("on");
   $("icoPause").classList.remove("on");
+  startSince(overdueMs);   /* 数字下面挂"已过 X"，声音停了也还在走 */
   playAlarm();          /* 先出声（本地文件，最快） */
   /* 主进程：弹系统通知（选"系统提示音"时它也负责 beep） */
   try { window.wgt.done({ minutes: minutes, overdueMin: over }); } catch (e) {}
@@ -978,6 +1012,7 @@ function stopAlarm() {
   alarmOn = false;
   cardEl.classList.remove("alarm", "over");
   stopAlarmAudio();                            /* 本地音频停掉 */
+  stopSince();                                 /* "已过 X"也收掉 */
   try { window.wgt.dismiss(); } catch (e) {}   /* 让主进程也停（系统音） */
 }
 
