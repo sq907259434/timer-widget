@@ -20,7 +20,7 @@ const createBackdrop = require("./backdrop");
 const CARD_W = 260;
 const CARD_H = 240;
 /* 迷你横条：修图时挂在画面上方，只留"剩余时间 + 一条进度"，不挡视线 */
-const MINI_W = 260, MINI_H = 124, MINI_RAD = 22;
+const MINI_W = 260, MINI_H = 76, MINI_RAD = 16;
 function layoutIsMini() { return readState().layout === "mini"; }
 function cardSize() { return layoutIsMini() ? { w: MINI_W, h: MINI_H } : { w: CARD_W, h: CARD_H }; }
 /* 四角拖拽缩放：只做等比，页面用 zoomFactor 整体放大，布局不用重算 */
@@ -517,7 +517,11 @@ function resizeBegin(w, corner) {
 
   let dpi = 1;
   try { dpi = screen.getDisplayMatching(w.getBounds()).scaleFactor || 1; } catch (e) {}
-  const baseW = CARD_W * dpi;          /* 物理像素下的 1 倍宽 */
+  /* ★ 宽高比要跟着当前布局走：横条是 260x76，方形是 260x240。
+     之前固定用 CARD_W/CARD_H，在横条里拖角会把窗口拉成方形比例，
+     于是 zoom 只放大内容、窗口不变 —— 就是"缩放变成内容缩放"那个现象。 */
+  const CS = cardSize();
+  const baseW = CS.w * dpi;            /* 物理像素下的 1 倍宽 */
 
   const st = {
     hwnd, corner,
@@ -539,7 +543,7 @@ function resizeBegin(w, corner) {
     let W = Math.round(st.ow + (right ? dx : -dx));
     const k = Math.min(SCALE_MAX, Math.max(SCALE_MIN, W / st.baseW));
     W = Math.round(st.baseW * k);
-    const H = Math.round(baseW * (CARD_H / CARD_W) * k);
+    const H = Math.round(baseW * (CS.h / CS.w) * k);
     const nx = right ? st.ox : st.ox + (st.ow - W);
     const ny = bottom ? st.oy : st.oy + (st.oh - H);
     try {

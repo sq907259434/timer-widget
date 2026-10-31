@@ -327,20 +327,21 @@
 
   /* ===== 迷你横条：宽度不变、高度减半（260x124）=====
      只保留"剩余时间 + 已过多久 + 两个按钮"，上面那片空白裁掉。 */
-  body.tiny .card.mini .num.s0{ top:44%; font-size:40px; letter-spacing:-0.5px; }
+  body.tiny .card.mini .num.s0{ top:42%; font-size:34px; letter-spacing:-0.5px; }
   /* 长方形里按钮放数字左右两边，不再上下叠 */
   body.tiny .card .btns{
-    inset:0; bottom:0; padding:0 12px;
+    inset:0; bottom:0; padding:0 9px;
     justify-content:space-between; align-items:center;
     pointer-events:none;            /* 只有按钮本身可点，中间留空 */
   }
   body.tiny .card .btns .btn{ pointer-events:auto; }
-  body.tiny .card .btn{ width:36px; height:36px; }
-  body.tiny .card .btn svg{ width:16px; height:16px; }
-  body.tiny .card .pin, body.tiny .card .xclose{ top:4px; width:18px; height:18px; }
-  body.tiny .card .pin svg, body.tiny .card .xclose svg{ width:9px; height:9px; }
+  /* 按钮类名是 .play / .reset（不是 .btn），之前写错了所以一直是 42px */
+  body.tiny .card .play, body.tiny .card .reset{ width:30px; height:30px; }
+  body.tiny .card .play svg, body.tiny .card .reset svg{ width:13px; height:13px; }
+  body.tiny .card .pin, body.tiny .card .xclose{ top:2px; width:15px; height:15px; }
+  body.tiny .card .pin svg, body.tiny .card .xclose svg{ width:8px; height:8px; }
   body.tiny .card .back{ display:none; }
-  body.tiny .card .since{ top:auto; bottom:12px; font-size:9px; }
+  body.tiny .card .since{ top:auto; bottom:4px; font-size:8.5px; }
 
   .back{
     /* 设定界面里它不该存在：opacity:0 的元素照样能被悬停、照样弹 title 提示，
@@ -360,28 +361,6 @@
   .back:hover{ background:rgba(255,255,255,.18); color:#fff; }
   body.light .back{ background:rgba(0,0,0,.07); color:rgba(0,0,0,.6); }
   body.light .back:hover{ background:rgba(0,0,0,.14); color:#111; }
-
-  /* 方形 / 横条 切换：悬停才出现，和另两个角标同一套样式 */
-  .shape{
-    pointer-events:none;
-    position:absolute; right:72px; top:11px; z-index:8;
-    width:26px; height:26px; padding:0; border:0; border-radius:50%;
-    background:rgba(255,255,255,.08);
-    color:rgba(255,255,255,.72);
-    display:grid; place-items:center;
-    cursor:pointer;
-    opacity:0; transform:translateY(-3px);
-    transition:opacity .16s ease, transform .16s ease, background .16s ease, color .16s ease;
-  }
-  .shape svg{ width:13px; height:13px; }
-  /* 设定界面也要能切：所以任何界面悬停都显示（不像图钉只在大数字界面出现） */
-  .card:hover .shape{ opacity:1; transform:none; pointer-events:auto; }
-  .shape:hover{ background:rgba(255,255,255,.18); color:#fff; }
-  body.light .shape{ background:rgba(0,0,0,.07); color:rgba(0,0,0,.55); }
-  body.light .shape:hover{ background:rgba(0,0,0,.14); color:#111; }
-  /* 横条里更小、更靠边 */
-  body.tiny .card .shape{ right:52px; top:4px; width:18px; height:18px; }
-  body.tiny .card .shape svg{ width:9px; height:9px; }
 
   /* 悬停出现的小叉：不用再右键找"退出" */
   .xclose{
@@ -744,16 +723,6 @@
   <button class="back" id="back" title="返回设定">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
       <path d="M15 5l-7 7 7 7"/>
-    </svg>
-  </button>
-
-  <button class="shape" id="shape" title="切换 横屏 / 竖屏">
-    <!-- 横竖屏切换：竖着的方块 + 横着的长条 + 中间箭头 -->
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-      <rect x="1.8" y="5.2" width="7.6" height="13.6" rx="2"/>
-      <rect x="13.4" y="9.4" width="8.8" height="5.2" rx="2"/>
-      <path d="M10.1 12h2.5"/>
-      <path d="M11.9 10.4l1.7 1.6-1.7 1.6"/>
     </svg>
   </button>
 
@@ -1471,13 +1440,6 @@ $("pin").addEventListener("click", (e) => {
 });
 if (window.wgt.getTop) window.wgt.getTop().then(setPinned).catch(() => {});
 if (window.wgt.onTop) window.wgt.onTop(setPinned);
-
-/* 方形 / 横条 切换 */
-$("shape").addEventListener("click", (e) => {
-  e.stopPropagation();
-  const mini = document.body.classList.contains("tiny");
-  try { window.wgt.setLayout(mini ? "full" : "mini"); } catch (er) {}
-});
 
 /* 小叉：退出（和右键菜单的"退出"同一条路） */
 $("xclose").addEventListener("click", () => {
