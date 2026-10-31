@@ -20,7 +20,7 @@ const createBackdrop = require("./backdrop");
 const CARD_W = 260;
 const CARD_H = 240;
 /* 迷你横条：修图时挂在画面上方，只留"剩余时间 + 一条进度"，不挡视线 */
-const MINI_W = 260, MINI_H = 76, MINI_RAD = 16;
+const MINI_W = 236, MINI_H = 76, MINI_RAD = 16;
 function layoutIsMini() { return readState().layout === "mini"; }
 function cardSize() { return layoutIsMini() ? { w: MINI_W, h: MINI_H } : { w: CARD_W, h: CARD_H }; }
 /* 四角拖拽缩放：只做等比，页面用 zoomFactor 整体放大，布局不用重算 */

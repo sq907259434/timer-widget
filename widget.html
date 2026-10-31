@@ -327,20 +327,43 @@
 
   /* ===== 迷你横条：宽度不变、高度减半（260x124）=====
      只保留"剩余时间 + 已过多久 + 两个按钮"，上面那片空白裁掉。 */
-  body.tiny .card.mini .num.s0{ top:42%; font-size:34px; letter-spacing:-0.5px; }
+  body.tiny .card.mini .num.s0{
+    top:44%; font-size:30px; letter-spacing:-0.5px;
+    transition:font-size .16s ease, top .16s ease;
+  }
+  /* 悬停：数字和按钮一起缩小，给顶部那排让位置 */
+  body.tiny .card:hover .num.s0{ font-size:24px; top:62%; }
   /* 长方形里按钮放数字左右两边，不再上下叠 */
   body.tiny .card .btns{
-    inset:0; bottom:0; padding:0 9px;
+    inset:0; bottom:0; padding:0 20px;      /* 按钮往里收，别隔那么远 */
     justify-content:space-between; align-items:center;
     pointer-events:none;            /* 只有按钮本身可点，中间留空 */
+    transition:padding .16s ease;
   }
+  body.tiny .card:hover .btns{ padding:14px 18px 0; align-items:flex-end; }
   body.tiny .card .btns .btn{ pointer-events:auto; }
   /* 按钮类名是 .play / .reset（不是 .btn），之前写错了所以一直是 42px */
-  body.tiny .card .play, body.tiny .card .reset{ width:30px; height:30px; }
-  body.tiny .card .play svg, body.tiny .card .reset svg{ width:13px; height:13px; }
-  body.tiny .card .pin, body.tiny .card .xclose{ top:2px; width:15px; height:15px; }
-  body.tiny .card .pin svg, body.tiny .card .xclose svg{ width:8px; height:8px; }
-  body.tiny .card .back{ display:none; }
+  body.tiny .card .play, body.tiny .card .reset{
+    width:28px; height:28px;
+    transition:width .16s ease, height .16s ease;
+  }
+  body.tiny .card .play svg, body.tiny .card .reset svg{ width:12px; height:12px; }
+  body.tiny .card:hover .play, body.tiny .card:hover .reset{ width:24px; height:24px; }
+  /* 横条太矮，图钉挤在中间只是噪音 —— 直接不显示（右键菜单里有置顶） */
+  body.tiny .card .pin{ display:none; }
+  body.tiny .card .xclose{ top:4px; right:28px; width:17px; height:17px; }
+  body.tiny .card .xclose svg{ width:9px; height:9px; }
+  /* 横条里这两个只在悬停时出现 */
+  body.tiny .card .back, body.tiny .card .shape{ display:none; }
+  body.tiny .card:hover .back, body.tiny .card:hover .shape{
+    display:grid; opacity:1; pointer-events:auto; transform:none;
+    top:4px; width:17px; height:17px; border-radius:50%;
+    background:rgba(255,255,255,.10); color:rgba(255,255,255,.75);
+  }
+  body.tiny .card:hover .back{ left:7px; }
+  body.tiny .card:hover .shape{ right:7px; left:auto; }
+  body.tiny .card:hover .back svg, body.tiny .card:hover .shape svg{ width:9px; height:9px; }
+  body.light .card.tiny:hover .back, body.light .card.tiny:hover .shape{ background:rgba(0,0,0,.08); color:rgba(0,0,0,.6); }
   body.tiny .card .since{ top:auto; bottom:4px; font-size:8.5px; }
 
   .back{
@@ -361,6 +384,16 @@
   .back:hover{ background:rgba(255,255,255,.18); color:#fff; }
   body.light .back{ background:rgba(0,0,0,.07); color:rgba(0,0,0,.6); }
   body.light .back:hover{ background:rgba(0,0,0,.14); color:#111; }
+
+  /* 横竖屏切换：默认不显示，只在横条悬停时出现（见 body.tiny 那段） */
+  .shape{
+    pointer-events:none;
+    position:absolute; right:72px; top:11px; z-index:8;
+    width:26px; height:26px; padding:0; border:0; border-radius:50%;
+    display:grid; place-items:center; cursor:pointer; opacity:0;
+  }
+  .shape svg{ width:13px; height:13px; }
+  .shape:hover{ background:rgba(255,255,255,.2); color:#fff; }
 
   /* 悬停出现的小叉：不用再右键找"退出" */
   .xclose{
@@ -723,6 +756,15 @@
   <button class="back" id="back" title="返回设定">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
       <path d="M15 5l-7 7 7 7"/>
+    </svg>
+  </button>
+
+  <button class="shape" id="shape" title="切换 横屏 / 竖屏">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="1.8" y="5.2" width="7.6" height="13.6" rx="2"/>
+      <rect x="13.4" y="9.4" width="8.8" height="5.2" rx="2"/>
+      <path d="M10.1 12h2.5"/>
+      <path d="M11.9 10.4l1.7 1.6-1.7 1.6"/>
     </svg>
   </button>
 
@@ -1440,6 +1482,13 @@ $("pin").addEventListener("click", (e) => {
 });
 if (window.wgt.getTop) window.wgt.getTop().then(setPinned).catch(() => {});
 if (window.wgt.onTop) window.wgt.onTop(setPinned);
+
+/* 横竖屏切换（横条悬停时出现） */
+$("shape").addEventListener("click", (e) => {
+  e.stopPropagation();
+  const mini = document.body.classList.contains("tiny");
+  try { window.wgt.setLayout(mini ? "full" : "mini"); } catch (er) {}
+});
 
 /* 小叉：退出（和右键菜单的"退出"同一条路） */
 $("xclose").addEventListener("click", () => {
