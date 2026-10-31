@@ -101,19 +101,23 @@
   }
   /* 液位：从顶端到圆点这一段的竖线是琥珀→红的渐变（参考图里最提气的一笔） */
   .ruler-fill{
-    position:absolute; left:97px; top:0; height:50%; width:3px; z-index:3;
+    /* 下端钉在圆点（bottom:50%），上端可以长/短 —— 滚动时它跟着刻度带一起走 */
+    position:absolute; left:97px; top:auto; bottom:50%; height:50%; width:3px; z-index:3;
     background:linear-gradient(to bottom,
       #F6D48C 0%, #EFB36B 26%, #E88A57 58%, #E4633F 100%);
     box-shadow:0 0 10px rgba(240,160,90,.35), 0 0 3px rgba(255,180,120,.5);
     border-radius:2px 2px 0 0;
     opacity:0;
-    transition:opacity .26s ease;
+    transition:opacity .26s ease, height .15s cubic-bezier(.22,.7,.25,1);
   }
   /* 默认态（0 分钟）没有液位：整条竖线是灰的。设了时间才亮起来 */
   .card.filled .ruler-fill{ opacity:1; }
   .ticks i{
     position:absolute; left:132px; height:4px; border-radius:2px;
     background:rgba(255,255,255,.32); z-index:2;
+    /* ★ 数字是用 translateY(-50%) 把"格点"对到中心的，刻度也必须这么对，
+       否则刻度中心比数字中心低 2px（半个刻度高），看起来就是"没对齐"。 */
+    transform:translateY(-50%);
   }
   /* 中间那根最长，往两端逐级变短、变暗（跟数字的大小变化同一条曲线） */
   .ticks i.t-3{ top:calc(50% - 112px); width:8px;  background:rgba(255,255,255,.16); }
@@ -132,8 +136,8 @@
   /* 刻度带和数字带都要能整体位移（滚动），遮罩留在外层不动 */
   .ticks-mask{
     position:absolute; inset:0; z-index:2; pointer-events:none;
-    -webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 20%, #000 80%, transparent 100%);
-            mask-image:linear-gradient(to bottom, transparent 0, #000 20%, #000 80%, transparent 100%);
+    -webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 22%, #000 78%, transparent 100%);
+            mask-image:linear-gradient(to bottom, transparent 0, #000 22%, #000 78%, transparent 100%);
   }
   .band{
     position:absolute; inset:0;
@@ -372,12 +376,15 @@ function rollTo(dir, next, keepRemain) {
   rollNext = next;
   rollKeep = !!keepRemain;
   const dy = dir > 0 ? -ROW_SHIFT : ROW_SHIFT;
-  const band = $("numBand"), tick = $("tickBand");
+  const band = $("numBand"), tick = $("tickBand"), fill = $("rulerFill");
   cardEl.classList.add("rolling");
   band.style.transition = "";
   tick.style.transition = "";
   band.style.transform = "translateY(" + dy + "px)";
   tick.style.transform = "translateY(" + dy + "px)";
+  /* 液位跟着刻度带走：下端钉在圆点，上端随刻度带位移 → 滚动时它在"伸缩"。
+     往一个方向滚会看到它从圆点往上长出来，另一个方向缩回去。 */
+  fill.style.height = "calc(50% + " + (-dy) + "px)";
   rollTimer = setTimeout(finishRoll, 150);
 }
 
@@ -385,15 +392,18 @@ function finishRoll() {
   if (!rollTimer) return;
   clearTimeout(rollTimer);
   rollTimer = 0;
-  const band = $("numBand"), tick = $("tickBand");
+  const band = $("numBand"), tick = $("tickBand"), fill = $("rulerFill");
   /* 归位这一下必须没有过渡，否则会看到"滚上去又滚回来" */
   band.style.transition = "none";
   tick.style.transition = "none";
+  fill.style.transition = "none";
   band.style.transform = "";
   tick.style.transform = "";
+  fill.style.height = "";
   void band.offsetHeight;             /* 强制回流，让上面的 none 立刻生效 */
   band.style.transition = "";
   tick.style.transition = "";
+  fill.style.transition = "";
   cardEl.classList.remove("rolling");
   const next = rollNext, keep = rollKeep;
   rollNext = null;

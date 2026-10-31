@@ -364,14 +364,27 @@ const _rgn = (() => {
     const u = k.load("user32.dll"), g = k.load("gdi32.dll");
     return {
       SetWindowRgn: u.func("SetWindowRgn", "int", ["void *", "void *", "bool"]),
+      GetWindowRgn: u.func("GetWindowRgn", "int", ["void *", "void *"]),
       CreateRoundRectRgn: g.func("CreateRoundRectRgn", "void *", ["int", "int", "int", "int", "int", "int"]),
       DeleteObject: g.func("DeleteObject", "bool", ["void *"]),
     };
   } catch (e) { return null; }
 })();
 
-function applyCardRegion(w) {
+function applyCardRegion(w, force) {
   if (!_rgn || !w || w.isDestroyed()) return;
+  /* ★ 不强制时先问一句"区域还在不在"。
+     SetParent 挂进 Progman 会把窗口区域冲掉（实测：挂之前 GetWindowRgn=2，
+     挂之后变 0，四个角就露出来了），所以要能在挂完之后补设一次。
+     已有的区域还在就跳过，避免每 3 秒重建一次导致闪。 */
+  if (!force) {
+    try {
+      const probe = _rgn.CreateRoundRectRgn(0, 0, 1, 1, 1, 1);
+      const had = _rgn.GetWindowRgn(hwndOf(w), probe);
+      _rgn.DeleteObject(probe);
+      if (had > 0) return;
+    } catch (e) { /* 查不到就当没有，照常设 */ }
+  }
   const b = w.getBounds();
   let dpi = 1, zoom = 1;
   try { dpi = screen.getDisplayMatching(b).scaleFactor || 1; } catch (e) {}
@@ -816,11 +829,18 @@ function createWindow() {
   if (dl.available && desktopLayerOn()) {
     w.once("show", () => setTimeout(() => {
       if (!desktopLayerOn()) return;
-      dl.set(true).then((ok) => evlogSafe("dlayer startup " + ok));
+      dl.set(true).then((ok) => {
+        evlogSafe("dlayer startup " + ok);
+        /* SetParent 会清掉窗口区域，必须挂完再裁一次 */
+        if (ok) applyCardRegion(w, true);
+      });
     }, 700));
   }
   if (dl.available) {
-    setInterval(() => { if (desktopLayerOn()) dl.ensure(); }, 3000);
+    setInterval(() => {
+      if (desktopLayerOn()) dl.ensure();
+      applyCardRegion(w);        /* 区域被冲掉就补；还在就直接 return */
+    }, 3000);
   }
 
   const applyTop = (on) => {
