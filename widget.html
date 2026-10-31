@@ -80,7 +80,7 @@
   .num.s-2{ top:calc(50% - 89px);  font-size:22px; color:#575757; }
   .num.s-1{ top:calc(50% - 53px);  font-size:30px; color:#8E8E8E; }
   .num.s0 {
-    top:50%; font-size:55px; font-weight:300; letter-spacing:-1.5px;
+    top:50%; font-size:55px; font-weight:500; letter-spacing:-1.5px;
     color:#fff; text-shadow:0 0 22px rgba(255,255,255,.10);
   }
   .num.s1 { top:calc(50% + 53px);  font-size:30px; color:#8E8E8E; }
@@ -101,8 +101,9 @@
   }
   /* 液位：从顶端到圆点这一段的竖线是琥珀→红的渐变（参考图里最提气的一笔） */
   .ruler-fill{
-    /* 下端钉在圆点（bottom:50%），上端可以长/短 —— 滚动时它跟着刻度带一起走 */
-    position:absolute; left:97px; top:auto; bottom:50%; height:50%; width:3px; z-index:3;
+    /* 下端钉在圆点（bottom:50%），高度由 JS 按"格数"给：
+       一格 = 中心到相邻数字的距离（53px），0→1 正好一格，3 格顶到卡片上沿 */
+    position:absolute; left:97px; top:auto; bottom:50%; height:0; width:3px; z-index:3;
     background:linear-gradient(to bottom,
       #F6D48C 0%, #EFB36B 26%, #E88A57 58%, #E4633F 100%);
     box-shadow:0 0 10px rgba(240,160,90,.35), 0 0 3px rgba(255,180,120,.5);
@@ -216,9 +217,10 @@
   .card.run .wheel{ width:100%; }
   .card.run .num.s0{
     left:auto; right:16px; text-align:right; top:50%;
-    font-size:30px; font-weight:300; letter-spacing:.5px;
+    font-size:30px; font-weight:400; letter-spacing:.5px;
   }
   /* 刻度收起，只留竖线 + 液位；液位高度由 JS 按"剩余/设定"逐帧给 */
+  body.scrubbing{ cursor:ns-resize; }
   .card.run .ticks{ opacity:0; }
   .card.run .ruler, .card.run .ruler-fill, .card.run .ind{ opacity:1; }
   /* 红条和数字在同一水平线上，运行时要收掉 */
@@ -232,7 +234,16 @@
     0%,100%{ box-shadow:inset 0 0 0 1px rgba(255,90,90,.10); background-color:transparent; }
     50%{ box-shadow:inset 0 0 0 2px rgba(255,90,90,.85), 0 0 26px rgba(255,90,90,.35); background-color:rgba(255,90,90,.10); }
   }
-  .card.alarm{ animation:flash 1s ease-in-out infinite; }
+  /* 到点：边框加粗成明显的红环，再配合呼吸闪（用户要求"边框画粗一点"） */
+  .card.alarm{
+    animation:flash 1s ease-in-out infinite;
+    box-shadow:inset 0 0 0 5px rgba(255,70,70,.85), 0 0 22px rgba(255,60,60,.45);
+  }
+  @keyframes flash2{
+    0%,100%{ box-shadow:inset 0 0 0 5px rgba(255,70,70,.9), 0 0 18px rgba(255,60,60,.35); }
+    50%    { box-shadow:inset 0 0 0 8px rgba(255,60,60,.55), 0 0 34px rgba(255,50,50,.55); }
+  }
+  .card.alarm{ animation:flash2 1s ease-in-out infinite; }
   .card.alarm .num.big{ color:var(--red); }
 
   /* ============ 双击改时间：就地输入框 ============ */
@@ -425,6 +436,8 @@ if (!window.wgt) {
     onImeText: on, onImeCommit: on, onImeCancel: on, onImeBlur: on,
     onReset: on, onTheme: on, theme: "dark",
     dismiss: noop, onResume: on, onDismiss: on,
+    getSound: () => Promise.resolve({ mute:false, loop:true, name:"a-dingdong" }),
+    onSound: on, onPreview: on,
   };
 }
 
@@ -480,25 +493,51 @@ const wrapMin = (v) => {
    外围两格在滚动过程中淡出（.card.rolling），避免看到错位。
    刻度带用同一个位移量，所以它和数字是"同一根尺子"，一起滚。 */
 const ROW_SHIFT = 53;                 /* 中心到相邻槽位的距离 */
+const SLOT_PX = ROW_SHIFT;            /* 液位"一格"的高度，和滚轮槽位同一把尺子 */
 let rollTimer = 0, rollNext = null, rollKeep = false;
 
 /* 连滚时 minutes 还没更新，取"正在滚向的那个值"当基准 */
 const curValue = () => (rollNext != null ? rollNext : minutes);
 
+/* ================= 滚轮"咔哒"声 =================
+   调时钟那种"咔、嗒"：两个短促的方波脉冲，音高随方向变（向上高、向下低）。
+   现场合成，不依赖任何音频文件，也不用主进程。 */
+let AC = null;
+function tickSound(dir) {
+  try {
+    if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
+    if (AC.state === "suspended") AC.resume();
+    const t0 = AC.currentTime;
+    const o = AC.createOscillator();
+    const g = AC.createGain();
+    o.type = "square";
+    const base = dir > 0 ? 1250 : 900;
+    o.frequency.setValueAtTime(base, t0);
+    o.frequency.exponentialRampToValueAtTime(base * 0.5, t0 + 0.02);
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(0.085, t0 + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.05);
+    o.connect(g);
+    g.connect(AC.destination);
+    o.start(t0);
+    o.stop(t0 + 0.055);
+  } catch (e) { /* 没声卡/被策略拦：静默降级 */ }
+}
+
 function rollTo(dir, next, keepRemain) {
   if (rollTimer) finishRoll();        /* 连滚：上一格立刻落定，不排队 */
   rollNext = next;
   rollKeep = !!keepRemain;
+  tickSound(dir);
   const dy = dir > 0 ? -ROW_SHIFT : ROW_SHIFT;
-  const band = $("numBand"), tick = $("tickBand"), fill = $("rulerFill");
+  const band = $("numBand"), tick = $("tickBand");
   cardEl.classList.add("rolling");
   band.style.transition = "";
   tick.style.transition = "";
   band.style.transform = "translateY(" + dy + "px)";
   tick.style.transform = "translateY(" + dy + "px)";
-  /* 液位跟着刻度带走：下端钉在圆点，上端随刻度带位移 → 滚动时它在"伸缩"。
-     往一个方向滚会看到它从圆点往上长出来，另一个方向缩回去。 */
-  fill.style.height = "calc(50% + " + (-dy) + "px)";
+  /* 液位不在这里拉伸：它的高度由 render() 按"格数"算，靠 CSS 的 height 过渡
+     跟上这 150ms —— 这样数字走一格、液位也正好跳一格，两边同拍。 */
   rollTimer = setTimeout(finishRoll, 150);
 }
 
@@ -506,18 +545,15 @@ function finishRoll() {
   if (!rollTimer) return;
   clearTimeout(rollTimer);
   rollTimer = 0;
-  const band = $("numBand"), tick = $("tickBand"), fill = $("rulerFill");
+  const band = $("numBand"), tick = $("tickBand");
   /* 归位这一下必须没有过渡，否则会看到"滚上去又滚回来" */
   band.style.transition = "none";
   tick.style.transition = "none";
-  fill.style.transition = "none";
   band.style.transform = "";
   tick.style.transform = "";
-  fill.style.height = "";
   void band.offsetHeight;             /* 强制回流，让上面的 none 立刻生效 */
   band.style.transition = "";
   tick.style.transition = "";
-  fill.style.transition = "";
   cardEl.classList.remove("rolling");
   const next = rollNext, keep = rollKeep;
   rollNext = null;
@@ -551,12 +587,17 @@ function render() {
     $("icoPlay").classList.add("on");
     $("icoPause").classList.remove("on");
   }
+  /* 液位高度：设定态按"格"走，运行态按"剩余比例"走。
+     设定态：0 → 没有；1 → 一格；2 → 两格；3 格就顶到卡片上沿。
+     一格 = 中心到相邻数字的距离（53px），和滚轮的槽位是同一把尺子。 */
+  const half = cardEl.clientHeight / 2 || 120;
   if (mode !== "run" && mode !== "pause") {
     SLOTS.forEach(([id, off]) => { $(id).textContent = label(minutes + off); });
+    const px = Math.min(half, Math.max(0, minutes) * SLOT_PX);
+    $("rulerFill").style.height = px + "px";
   } else {
-    /* 运行/暂停：液位从顶端向圆点收缩，长度 = 剩余/设定 */
     const ratio = totalMs > 0 ? Math.max(0, Math.min(1, remain / totalMs)) : 0;
-    $("rulerFill").style.height = (ratio * 50) + "%";
+    $("rulerFill").style.height = (ratio * half) + "px";
   }
   syncHeight();
 }
@@ -638,19 +679,72 @@ function finish(overdueMs) {
   cardEl.classList.add("alarm");
   const over = Math.max(0, Math.round((overdueMs || 0) / 60000));
   cardEl.classList.toggle("over", over >= 1);
+  /* 时间到 = 液位排空。不写这一句会停在最后一帧（满格），看着像还没走完。 */
+  $("rulerFill").style.height = "0px";
   $("n0").textContent = over >= 1 ? "超时 " + over + " 分" : "00:00";
   $("icoPlay").classList.add("on");
   $("icoPause").classList.remove("on");
-  /* 主进程：弹系统通知 + 响铃（带设定时长和超时分钟数） */
+  playAlarm();          /* 先出声（本地文件，最快） */
+  /* 主进程：弹系统通知（选"系统提示音"时它也负责 beep） */
   try { window.wgt.done({ minutes: minutes, overdueMin: over }); } catch (e) {}
   saveRun();
 }
+
+/* ================= 到点提示音 =================
+   用 <audio> 放 assets/ 里的 WAV（file:// 页面里 fetch 会被拦，媒体元素不会）。
+   循环 / 只响一次由设置决定；"系统提示音"那条交给主进程 beep。 */
+let SOUND = { mute: false, loop: true, name: "a-dingdong" };
+let alarmAudio = null;
+
+function alarmSrc(name) {
+  return "assets/alarm-" + name + ".wav";
+}
+
+function playAlarm() {
+  if (SOUND.mute) return;
+  if (SOUND.name === "system") return;   /* 系统音由主进程 beep */
+  try {
+    if (!alarmAudio) {
+      alarmAudio = new Audio();
+      alarmAudio.preload = "auto";
+    }
+    alarmAudio.src = alarmSrc(SOUND.name);
+    alarmAudio.loop = SOUND.loop !== false;
+    alarmAudio.volume = 1;
+    alarmAudio.currentTime = 0;
+    const p = alarmAudio.play();
+    if (p && p.catch) p.catch(() => {});
+  } catch (e) { /* 没声卡就静音降级，通知还在 */ }
+}
+
+function stopAlarmAudio() {
+  if (!alarmAudio) return;
+  try { alarmAudio.pause(); alarmAudio.currentTime = 0; } catch (e) {}
+}
+
+/* 试听：不循环、放一次 */
+function previewSound(name) {
+  if (!name || name === "system") return;
+  try {
+    const a = new Audio(alarmSrc(name));
+    a.volume = 1;
+    const p = a.play();
+    if (p && p.catch) p.catch(() => {});
+  } catch (e) {}
+}
+
+if (window.wgt.getSound) {
+  window.wgt.getSound().then((v) => { if (v) SOUND = v; }).catch(() => {});
+}
+if (window.wgt.onSound) window.wgt.onSound((v) => { if (v) SOUND = v; });
+if (window.wgt.onPreview) window.wgt.onPreview(previewSound);
 
 function stopAlarm() {
   if (!alarmOn) return;
   alarmOn = false;
   cardEl.classList.remove("alarm", "over");
-  try { window.wgt.dismiss(); } catch (e) {}   /* 让主进程立刻停声 */
+  stopAlarmAudio();                            /* 本地音频停掉 */
+  try { window.wgt.dismiss(); } catch (e) {}   /* 让主进程也停（系统音） */
 }
 
 /* ================= 交互：滚轮 ================= */
@@ -744,14 +838,41 @@ if (window.wgt.onImeText) {
    按住卡片空白处拖（按钮/输入框/面板除外）。位移由主进程跟系统光标算，
    页面只报"按下/松开"。 */
 const NO_DRAG = "button, input, .panel";
+/* 竖线（分界线）的 x：它左边是"数字那一列"，按住上下拖 = 拨轮调时间 */
+const RULER_X = 97;
 let pressing = false;
+let scrub = null;          /* { y } 按住左半边拖动时用 */
+
 window.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
   if (e.target.closest(NO_DRAG)) return;
+  /* 分界线左边：不搬窗口，改成拨轮（运行中不能调，仍按搬窗口处理） */
+  if (e.clientX <= RULER_X && mode !== "run") {
+    scrub = { y: e.clientY };
+    document.body.classList.add("scrubbing");
+    return;
+  }
   pressing = true;
   document.body.classList.add("press-lock");
   try { window.wgt.dragBegin(); } catch (er) {}
 }, true);
+
+/* 拨轮：鼠标跟着手走，每跨过一格的高度就拨一格（和滚轮同一个 rollTo，
+   所以数字、刻度、液位、咔哒声全部同拍） */
+window.addEventListener("mousemove", (e) => {
+  if (!scrub) return;
+  let dy = e.clientY - scrub.y;
+  while (dy <= -SLOT_PX) { scrub.y -= SLOT_PX; rollTo(1, wrapMin(curValue() + 1), false); dy = e.clientY - scrub.y; }
+  while (dy >= SLOT_PX) { scrub.y += SLOT_PX; rollTo(-1, wrapMin(curValue() - 1), false); dy = e.clientY - scrub.y; }
+});
+
+const endScrub = () => {
+  if (!scrub) return;
+  scrub = null;
+  document.body.classList.remove("scrubbing");
+};
+window.addEventListener("mouseup", endScrub);
+window.addEventListener("blur", endScrub);
 const endPress = () => {
   if (!pressing) return;
   pressing = false;

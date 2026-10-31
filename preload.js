@@ -36,6 +36,10 @@ contextBridge.exposeInMainWorld("wgt", {
   onPreset: (fn) => ipcRenderer.on("wgt:preset", (_e, m) => fn(Number(m) || 0)),
   /* 右键菜单里的"重置计时" */
   onReset: (fn) => ipcRenderer.on("timer:reset", () => fn()),
+  /* 到点提示音：设置（静音/循环/选哪版）+ 换音 + 试听 */
+  getSound: () => ipcRenderer.invoke("wgt:get-sound"),
+  onSound: (fn) => ipcRenderer.on("wgt:sound", (_e, v) => fn(v || {})),
+  onPreview: (fn) => ipcRenderer.on("timer:preview", (_e, name) => fn(name)),
   /* 日间/夜间：主进程决定，页面只负责换皮 */
   theme: THEME,
   onTheme: (fn) => ipcRenderer.on("wgt:theme", (_e, t) => fn(t)),

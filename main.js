@@ -1026,9 +1026,24 @@ async function setDesktopMenu(on) {
    两者都用 state.sound 里的开关控制。 */
 let alarmTimer = null, alarmBeeps = 0, alarmNote = null;
 
+/* 可选的提示音（文件在 assets/，由 tools/make-alarm.py 合成） */
+const ALARM_SOUNDS = [
+  ["a-dingdong", "叮咚（清亮，最像提醒）"],
+  ["b-soft", "柔和三连（不刺耳）"],
+  ["c-beep", "电子表（三短声）"],
+  ["d-bell", "低钟（沉稳）"],
+  ["e-wood", "木质叩击（嗒嗒）"],
+  ["system", "系统提示音（原来的）"],
+];
+
+function soundName() {
+  const n = (readState().sound || {}).name;
+  return ALARM_SOUNDS.some(([id]) => id === n) ? n : "a-dingdong";
+}
+
 function soundCfg() {
   const s = readState().sound || {};
-  return { mute: s.mute === true, loop: s.loop !== false };   /* 默认：不静音、循环响 */
+  return { mute: s.mute === true, loop: s.loop !== false, name: soundName() };
 }
 
 function stopAlarmSound() {
@@ -1041,11 +1056,12 @@ function startAlarm(info) {
   stopAlarmSound();
   const cfg = soundCfg();
 
-  if (!cfg.mute) {
+  /* 声音交给页面放（页面有 Audio 元素，能循环、能换文件）。
+     只有选"系统提示音"时这里才 beep —— 也当作页面音频失败时的兜底。 */
+  if (!cfg.mute && cfg.name === "system") {
     const tick = () => {
       alarmBeeps++;
       try { shell.beep(); } catch (e) {}
-      /* 不循环：响三声就收；循环：一直响到用户点掉 */
       if (!cfg.loop && alarmBeeps >= 3) { alarmTimer = null; return; }
       alarmTimer = setTimeout(tick, 1200);
     };
@@ -1097,6 +1113,31 @@ async function buildMenu() {
           click: () => { patchState({ theme: "light" }); pushTheme(); } },
         { label: "夜间（深色）", type: "radio", checked: themeSetting() === "dark",
           click: () => { patchState({ theme: "dark" }); pushTheme(); } },
+      ],
+    },
+    {
+      label: "提示音",
+      submenu: [
+        ...ALARM_SOUNDS.map(([id, label]) => ({
+          label: label,
+          type: "radio",
+          checked: soundName() === id,
+          click: () => {
+            patchState({ sound: { ...(readState().sound || {}), name: id } });
+            if (cardWin && !cardWin.isDestroyed()) {
+              try { cardWin.webContents.send("wgt:sound", soundCfg()); } catch (e) {}
+            }
+          },
+        })),
+        { type: "separator" },
+        {
+          label: "试听当前提示音",
+          click: () => {
+            if (cardWin && !cardWin.isDestroyed()) {
+              try { cardWin.webContents.send("timer:preview", soundName()); } catch (e) {}
+            }
+          },
+        },
       ],
     },
     {
@@ -1193,6 +1234,7 @@ app.whenReady().then(() => {
   });
 
   /* ---------- 桌面快照背景 + 外观（透明度/磨砂，与待办卡同款） ---------- */
+  ipcMain.handle("wgt:get-sound", () => soundCfg());
   ipcMain.handle("wgt:backdrop-now", () => bdPayload());
   ipcMain.handle("wgt:get-look", () => readState().look || null);
   ipcMain.handle("wgt:set-look", (e, v) => {
