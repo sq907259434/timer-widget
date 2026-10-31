@@ -38,6 +38,12 @@ contextBridge.exposeInMainWorld("wgt", {
   getLook: () => ipcRenderer.invoke("wgt:get-look"),
   setLook: (v) => ipcRenderer.invoke("wgt:set-look", v),
   onShowLook: (fn) => ipcRenderer.on("wgt:show-look", () => fn()),
+  /* 外观浮窗改了值 → 卡片跟着更新 */
+  onLook: (fn) => ipcRenderer.on("wgt:look", (_e, v) => fn(v || {})),
+  /* 卡片上的图钉：钉在最前面 */
+  getTop: () => ipcRenderer.invoke("wgt:get-top"),
+  toggleTop: () => ipcRenderer.send("wgt:toggle-top"),
+  onTop: (fn) => ipcRenderer.on("wgt:top", (_e, v) => fn(!!v)),
   /* 右键菜单里的预设时长（分钟） */
   onPreset: (fn) => ipcRenderer.on("wgt:preset", (_e, m) => fn(Number(m) || 0)),
   /* 右键菜单里的"重置计时" */

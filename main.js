@@ -338,7 +338,12 @@ function fgIsDesktop() {
 const wallpaperFile = () =>
   path.join(app.getPath("appData"), "Microsoft", "Windows", "Themes", "TranscodedWallpaper");
 function wallpaperStamp() {
-  try { const s = fs.statSync(wallpaperFile()); return s.mtimeMs || 0; } catch (e) { return 0; }
+  /* 修改时间 + 大小：Windows 换壁纸会重写 TranscodedWallpaper，
+     两个值一起比，比只看 mtime 更稳（同一张图重新应用也能识别）。 */
+  try {
+    const s = fs.statSync(wallpaperFile());
+    return (s.mtimeMs || 0) + ":" + (s.size || 0);
+  } catch (e) { return 0; }
 }
 
 function scheduleSnapshot(delay, reason) {
@@ -387,8 +392,8 @@ function startDesktopWatch() {
     const s = wallpaperStamp();
     if (!s || s === _wpStamp) return;
     _wpStamp = s;
-    scheduleSnapshot(600, "wallpaper");
-  }, 5000);
+    scheduleSnapshot(500, "wallpaper");
+  }, 2000);
 
   try { screen.on("display-metrics-changed", () => scheduleSnapshot(800, "metrics")); } catch (e) {}
 
@@ -511,6 +516,75 @@ function resizeBegin(w, corner) {
       applyCardRegion(w, true);
     } catch (e) {}
   }, 16);
+}
+
+/* ================= 置顶（菜单和图钉共用） =================
+   贴进桌面层时卡片是 Progman 的子窗口，setAlwaysOnTop 对子窗口无效 ——
+   所以"置顶"必须先把卡片从桌面层摘出来，两者互斥。 */
+async function setTopState(w, want) {
+  const on = !!want;
+  patchState({ top: on, desktopLayer: !on });
+  if (!w || w.isDestroyed()) return on;
+  if (on) {
+    try { if (DL && DL.isOn && DL.isOn()) await DL.set(false); } catch (e) {}
+    try { w.setAlwaysOnTop(true, "floating"); } catch (e) {}
+  } else {
+    try { w.setAlwaysOnTop(false); } catch (e) {}
+    try { if (DL) await DL.set(true); } catch (e) {}
+  }
+  try { w.webContents.send("wgt:top", on); } catch (e) {}
+  return on;
+}
+
+/* ================= 外观浮窗 =================
+   卡片只有 260x240，面板放里面必然挡住内容、边角还会被圆角裁掉。
+   所以做成一个独立小窗，贴在卡片外侧；失焦自动关。 */
+let lookWin = null;
+
+function closeLookWin() {
+  if (!lookWin || lookWin.isDestroyed()) { lookWin = null; return; }
+  try { lookWin.close(); } catch (e) {}
+  lookWin = null;
+}
+
+function openLookWin() {
+  if (lookWin && !lookWin.isDestroyed()) { lookWin.focus(); return; }
+  const cw = cardWin;
+  if (!cw || cw.isDestroyed()) return;
+
+  const W = 236, H = 104, GAP = 10;
+  const b = cw.getBounds();
+  let d = screen.getDisplayMatching(b);
+  const a = d.workArea;
+
+  /* 默认贴在卡片下面、水平居中；下面放不下就放上面 */
+  let x = Math.round(b.x + (b.width - W) / 2);
+  let y = b.y + b.height + GAP;
+  if (y + H > a.y + a.height - 6) y = b.y - H - GAP;      /* 下面没地方 → 放上面 */
+  x = Math.min(Math.max(x, a.x + 6), a.x + a.width - W - 6);
+  y = Math.min(Math.max(y, a.y + 6), a.y + a.height - H - 6);
+
+  lookWin = new BrowserWindow({
+    width: W, height: H, x: Math.round(x), y: Math.round(y),
+    frame: false, transparent: true, backgroundColor: "#00000000",
+    resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+    skipTaskbar: true, alwaysOnTop: true, hasShadow: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "look-preload.js"),
+      contextIsolation: true, nodeIntegration: false,
+      additionalArguments: ["--wgt-theme=" + resolvedTheme()],
+    },
+  });
+  lookWin.loadFile(path.join(__dirname, "look.html"));
+  lookWin.once("ready-to-show", () => { try { lookWin.show(); } catch (e) {} });
+  lookWin.on("blur", () => closeLookWin());     /* 点别处就收起 */
+  lookWin.on("closed", () => { lookWin = null; });
+}
+
+function toggleLookWin() {
+  if (lookWin && !lookWin.isDestroyed()) closeLookWin();
+  else openLookWin();
 }
 
 function dragBegin(w) {
@@ -934,7 +1008,9 @@ function createWindow() {
       if (now) dl.raise();
     }, 120);
   }
-  if (dl.available && desktopLayerOn()) {
+  /* 勾了「窗口置顶」就不进桌面层：子窗口 setAlwaysOnTop 无效，
+     两者互斥。否则重启后又贴回桌面层，置顶白设。 */
+  if (dl.available && desktopLayerOn() && !top) {
     w.once("show", () => setTimeout(() => {
       if (!desktopLayerOn()) return;
       dl.set(true).then((ok) => {
@@ -1228,7 +1304,7 @@ async function buildMenu() {
       checked: (readState().sound || {}).loop !== false,
       click: (mi) => { patchState({ sound: { ...(readState().sound || {}), loop: !!mi.checked } }); },
     },
-    { label: "外观设置（透明度 / 磨砂）", click: () => cardWin && cardWin.webContents.send("wgt:show-look") },
+    { label: "外观设置（透明度 / 磨砂）…", click: () => toggleLookWin() },
     { label: "刷新桌面背景", click: () => refreshSnapshot("menu") },
     { type: "separator" },
     { type: "separator" },
@@ -1255,15 +1331,10 @@ async function buildMenu() {
       click: (item) => { toggleDesktopLayer(item.checked); },
     },
     {
-      label: "窗口置顶",
+      label: "窗口置顶（会脱离桌面层）",
       type: "checkbox",
       checked: onTop,
-      click: (item) => {
-        patchState({ top: item.checked });
-        if (cardWin && !cardWin.isDestroyed()) {
-          cardWin.setAlwaysOnTop(item.checked, "floating");
-        }
-      },
+      click: (item) => { setTopState(cardWin, item.checked); },
     },
     { type: "separator" },
     { label: "退出", role: "quit" },
@@ -1320,6 +1391,13 @@ app.whenReady().then(() => {
 
   /* ---------- 桌面快照背景 + 外观（透明度/磨砂，与待办卡同款） ---------- */
   ipcMain.on("wgt:editing", (_e, on) => { editingNow = !!on; });
+  ipcMain.on("wgt:close-look", () => closeLookWin());
+  /* 卡片上的图钉：读当前状态 / 切换 */
+  ipcMain.handle("wgt:get-top", () => readState().top === true);
+  ipcMain.on("wgt:toggle-top", (e) => {
+    const w = senderWin(e) || cardWin;
+    setTopState(w, !(readState().top === true));
+  });
   ipcMain.handle("wgt:get-sound", () => soundCfg());
   ipcMain.on("wgt:set-sound", (_e, name) => {
     if (!ALARM_SOUNDS.some(([id]) => id === name)) return;
@@ -1330,10 +1408,14 @@ app.whenReady().then(() => {
   ipcMain.handle("wgt:set-look", (e, v) => {
     const o = (v && typeof v === "object") ? v : {};
     const look = {
-      alpha: Math.min(1, Math.max(0.1, Number(o.alpha) || 1)),   /* 底色浓度，1=现状（不透明渐变） */
-      frost: Math.min(20, Math.max(0, Number(o.frost) || 0)),    /* 快照模糊半径 px */
+      alpha: Math.min(1, Math.max(0.08, Number(o.alpha) || 1)),
+      frost: Math.min(20, Math.max(0, Number(o.frost) || 0)),
     };
     patchState({ look });
+    /* 浮窗里改的，卡片得跟着变 */
+    if (cardWin && !cardWin.isDestroyed()) {
+      try { cardWin.webContents.send("wgt:look", look); } catch (er) {}
+    }
     return look;
   });
 

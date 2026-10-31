@@ -285,8 +285,38 @@
   .hint.on{ opacity:1; }
   body.light .hint{ color:rgba(0,0,0,.42); }
 
-  /* 简洁界面左上角的返回箭头：点了回到设定界面 */
+/* 简洁界面左上角的返回箭头：点了回到设定界面 */
+  /* 中间上方的图钉：悬停出现，点了钉在最前（再点取消） */
+  .pin{
+    pointer-events:none;      /* 不可见时别响应鼠标，否则会弹 title 提示 */
+    position:absolute; left:50%; top:11px; z-index:8;
+    width:26px; height:26px; padding:0; border:0; border-radius:50%;
+    background:rgba(255,255,255,.08);
+    color:rgba(255,255,255,.72);
+    display:grid; place-items:center;
+    cursor:pointer;
+    opacity:0;
+    transform:translateX(-50%) translateY(-3px);
+    transition:opacity .16s ease, transform .16s ease, background .16s ease, color .16s ease;
+  }
+  .pin svg{ width:13px; height:13px; }
+  /* 只有鼠标挪上去才出现（钉住了也一样，只是变红做提示） */
+  .card.mini:hover .pin,
+  .card.pinned:hover .pin{ opacity:1; transform:translateX(-50%); pointer-events:auto; }
+  .pin:hover{ background:rgba(255,255,255,.18); color:#fff; }
+  /* 已钉住：仍然只在悬停时出现；用低饱和的灰蓝做提示，不用红（太扎眼） */
+  .card.pinned .pin{
+    background:rgba(156,180,216,.18); color:#BFD0E8;
+    box-shadow:inset 0 0 0 1px rgba(156,180,216,.35);
+  }
+  body.light .pin{ background:rgba(0,0,0,.07); color:rgba(0,0,0,.55); }
+  body.light .pin:hover{ background:rgba(0,0,0,.14); color:#111; }
+  body.light .card.pinned .pin{ background:rgba(90,120,160,.13); color:#456687; box-shadow:inset 0 0 0 1px rgba(90,120,160,.28); }
+
   .back{
+    /* 设定界面里它不该存在：opacity:0 的元素照样能被悬停、照样弹 title 提示，
+       所以必须把命中一起关掉（pointer-events:none），只在简洁界面才恢复。 */
+    pointer-events:none;
     position:absolute; left:12px; top:12px; z-index:8;
     width:26px; height:26px; padding:0; border:0; border-radius:50%;
     background:rgba(255,255,255,.08);
@@ -297,7 +327,7 @@
     transition:opacity .16s ease, transform .16s ease, background .16s ease;
   }
   .back svg{ width:13px; height:13px; }
-  .card.mini:hover .back{ opacity:1; transform:none; }
+  .card.mini:hover .back{ opacity:1; transform:none; pointer-events:auto; }
   .back:hover{ background:rgba(255,255,255,.18); color:#fff; }
   body.light .back{ background:rgba(0,0,0,.07); color:rgba(0,0,0,.6); }
   body.light .back:hover{ background:rgba(0,0,0,.14); color:#111; }
@@ -474,6 +504,34 @@
   .row b{ flex:0 0 34px; text-align:right; font-weight:500; color:var(--ink3); font-variant-numeric:tabular-nums; }
   .row input[type=range]{ flex:1 1 auto; min-width:0; accent-color:#8ea0c4; height:16px; }
   .panel .close{ margin-top:2px; font-size:11px; color:var(--ink3); text-align:right; cursor:pointer; }
+
+  /* 外观面板：压成一行 + 半透明带模糊 —— 调透明度时能看见卡片本身的效果 */
+  .panel.look{
+    padding:8px 24px 8px 9px;
+    display:flex; gap:8px; align-items:center;
+    background:rgba(12,16,24,.62);
+    -webkit-backdrop-filter:blur(10px) saturate(1.15);
+            backdrop-filter:blur(10px) saturate(1.15);
+    box-shadow:0 -1px 0 rgba(255,255,255,.08);
+  }
+  .panel.look .row{ flex:1 1 0; min-width:0; height:24px; gap:3px; }
+  .panel.look .row span{ flex:0 0 30px; font-size:9px; white-space:nowrap; }
+  .panel.look .row input[type=range]{ flex:1 1 auto; min-width:0; }
+  .panel.look .row b{ flex:0 0 27px; font-size:9px; text-align:right; }
+  /* 收起放到面板右侧当一个小叉，不占一行 */
+  .panel.look .close{
+    position:absolute; right:6px; top:50%; transform:translateY(-50%);
+    margin:0; font-size:0; width:16px; height:16px; border-radius:50%;
+    display:grid; place-items:center;
+    color:rgba(255,255,255,.55);
+  }
+  .panel.look .close::after{ content:"×"; font-size:14px; line-height:1; }
+  .panel.look .close:hover{ background:rgba(255,255,255,.14); color:#fff; }
+  body.light .panel.look .close{ color:rgba(0,0,0,.5); }
+  body.light .panel.look{
+    background:rgba(250,250,250,.72);
+    box-shadow:0 -1px 0 rgba(0,0,0,.06);
+  }
   /* 提示音面板：每行鼠标移上去就试听（原生右键菜单没有 hover，只能做成卡片内面板） */
   .sndlist{ display:flex; flex-direction:column; gap:2px; margin:4px 0 6px; }
   .sndrow{
@@ -625,6 +683,13 @@
   <i class="rz rz-bl" data-c="bl"></i>
   <i class="rz rz-br" data-c="br"></i>
 
+  <button class="pin" id="pin" title="钉在最前面">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 3h6l-1 6 3.5 3.5H6.5L10 9 9 3z"/>
+      <path d="M12 12.5V21"/>
+    </svg>
+  </button>
+
   <button class="back" id="back" title="返回设定">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
       <path d="M15 5l-7 7 7 7"/>
@@ -656,13 +721,6 @@
   </button>
   </div>
 
-  <div class="panel" id="panel">
-    <h4>外观</h4>
-    <label class="row"><span>透明度</span><input id="lkAlpha" type="range" min="8" max="100" step="1"><b id="lkAlphaV"></b></label>
-    <label class="row"><span>磨砂</span><input id="lkFrost" type="range" min="0" max="20" step="1"><b id="lkFrostV"></b></label>
-    <div class="close" id="lkClose">收起</div>
-  </div>
-
   <div class="panel snd" id="sndPanel">
     <h4>提示音</h4>
     <div class="sndlist" id="sndList"></div>
@@ -688,6 +746,7 @@ if (!window.wgt) {
     onImeText: on, onImeCommit: on, onImeCancel: on, onImeBlur: on,
     onReset: on, onHint: on, onTheme: on, theme: "dark",
     setSound: noop, onShowSound: on, resizeBegin: noop, resizeEnd: noop,
+    getTop: () => Promise.resolve(false), toggleTop: noop, onTop: on,
     editing: noop, onCommitEdit: on,
     dismiss: noop, onResume: on, onDismiss: on,
     getSound: () => Promise.resolve({ mute:false, loop:true, name:"a-dingdong" }),
@@ -771,38 +830,12 @@ let rollTimer = 0, rollNext = null, rollKeep = false;
 /* 连滚时 minutes 还没更新，取"正在滚向的那个值"当基准 */
 const curValue = () => (rollNext != null ? rollNext : minutes);
 
-/* ================= 滚轮"咔哒"声 =================
-   调时钟那种"咔、嗒"：两个短促的方波脉冲，音高随方向变（向上高、向下低）。
-   现场合成，不依赖任何音频文件，也不用主进程。 */
-let AC = null;
-function tickSound(dir) {
-  try {
-    if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
-    if (AC.state === "suspended") AC.resume();
-    const t0 = AC.currentTime;
-    const o = AC.createOscillator();
-    const g = AC.createGain();
-    o.type = "square";
-    const base = dir > 0 ? 1250 : 900;
-    o.frequency.setValueAtTime(base, t0);
-    o.frequency.exponentialRampToValueAtTime(base * 0.5, t0 + 0.02);
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(0.085, t0 + 0.002);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.05);
-    o.connect(g);
-    g.connect(AC.destination);
-    o.start(t0);
-    o.stop(t0 + 0.055);
-  } catch (e) { /* 没声卡/被策略拦：静默降级 */ }
-}
-
 function rollTo(dir, next, keepRemain) {
   markHint();
   $("sndPanel").classList.remove("on");
   if (rollTimer) finishRoll();        /* 连滚：上一格立刻落定，不排队 */
   rollNext = next;
   rollKeep = !!keepRemain;
-  tickSound(dir);
   const dy = dir > 0 ? -ROW_SHIFT : ROW_SHIFT;
   const band = $("numBand"), tick = $("tickBand");
   cardEl.classList.add("rolling");
@@ -861,7 +894,7 @@ function render() {
   if (mode === "run" || mode === "pause") {
     cardEl.classList.add("run");
     cardEl.classList.toggle("pause", mode === "pause");
-    cardEl.classList.toggle("mini", view === "mini" && mode === "pause");
+    cardEl.classList.toggle("mini", view === "mini");
     n0.textContent = mmss(remain);
     $("icoPlay").classList.toggle("on", mode === "pause");
     $("icoPause").classList.toggle("on", mode === "run");
@@ -923,7 +956,7 @@ function start() {
   remain = totalMs;
   endAt = Date.now() + remain;
   mode = "run";
-  view = "set";
+  view = "mini";              /* 运行就用简洁界面（滚轮版太挤，用户选的这个） */
   runStartAt = Date.now();
   stopAlarm();
   render();
@@ -935,7 +968,7 @@ function resume() {
   if (remain <= 0) { start(); return; }
   endAt = Date.now() + remain;
   mode = "run";
-  view = "set";
+  view = "mini";
   runStartAt = Date.now();
   render();
   tickLoop();
@@ -1094,7 +1127,9 @@ $("sndList").addEventListener("click", (e) => {
 $("sndClose").addEventListener("click", () => $("sndPanel").classList.remove("on"));
 
 function showSndPanel() {
-  $("panel").classList.remove("on");        /* 两个面板不同时开 */
+  /* 注意：这里原来还有一句关掉"外观面板"的代码，
+     但外观面板已经搬到卡片外的独立小窗了，元素不存在 —— 留着会抛错，
+     整个函数直接中断，提示音面板就打不开了（用户报的"提醒音又没了"）。 */
   renderSndList();
   $("sndPanel").classList.add("on");
   /* 打开时把音频解锁一下：有些环境要一次用户手势才允许播放 */
@@ -1340,9 +1375,35 @@ if (window.wgt.onImeText) {
 
 /* 简洁界面左上角的返回箭头 → 回到设定界面（计时仍停着，可以继续调时间） */
 $("back").addEventListener("click", () => {
+  /* 返回 = 放弃这次计时，直接回到默认设定 ——
+     不把"还剩多少"带回去（否则再点播放会从半截继续，容易误会）。 */
+  if (raf) { cancelAnimationFrame(raf); raf = null; }
+  mode = "idle";
   view = "set";
+  runStartAt = 0;
+  stopAlarm();
+  remain = totalSeconds() * 1000;   /* 剩余量回到设定值 */
   render();
+  saveRun();
 });
+
+/* 点面板外的空白 = 收起（设置即时生效，收起就等于"确定"） */
+document.addEventListener("mousedown", (e) => {
+  if ($("sndPanel").classList.contains("on") && !e.target.closest("#sndPanel")) $("sndPanel").classList.remove("on");
+}, true);
+
+/* 图钉：钉在最前面（和右键菜单"窗口置顶"同一条路） */
+let pinned = false;
+function setPinned(v) {
+  pinned = !!v;
+  cardEl.classList.toggle("pinned", pinned);
+}
+$("pin").addEventListener("click", (e) => {
+  e.stopPropagation();
+  try { window.wgt.toggleTop(); } catch (er) {}
+});
+if (window.wgt.getTop) window.wgt.getTop().then(setPinned).catch(() => {});
+if (window.wgt.onTop) window.wgt.onTop(setPinned);
 
 /* 小叉：退出（和右键菜单的"退出"同一条路） */
 $("xclose").addEventListener("click", () => {
@@ -1369,14 +1430,21 @@ window.addEventListener("blur", endResize);
 const NO_DRAG = "button, input, .panel, .rz";
 /* 竖线（分界线）的 x：它左边是"数字那一列"，按住上下拖 = 拨轮调时间 */
 const RULER_X = 97;
+/* 顶部这一条横跨整卡，专门留给"拖窗口" ——
+   不然分界线左边全是调时间区，卡片就没地方抓了。
+   32px 的依据：再窄容易按偏、变成调时间；再宽就开始吃掉最上面那档数字的可调范围。 */
+const DRAG_TOP_BAND = 32;
 let pressing = false;
 let scrub = null;          /* { y } 按住左半边拖动时用 */
 
 window.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
   if (e.target.closest(NO_DRAG)) return;
-  /* 分界线左边：不搬窗口，改成拨轮（运行中不能调，仍按搬窗口处理） */
-  if (e.clientX <= RULER_X && mode !== "run") {
+  /* 顶部那一条：始终用来拖窗口（不受分界线限制） */
+  const cardRect = cardEl.getBoundingClientRect();
+  const inTopBand = (e.clientY - cardRect.top) <= DRAG_TOP_BAND;
+  /* 分界线左边（且不在顶部那条）：不搬窗口，改成拨轮 */
+  if (!inTopBand && e.clientX <= RULER_X && mode !== "run") {
     scrub = { base: e.clientY };
     document.body.classList.add("scrubbing");
     cardEl.classList.add("rolling");          /* 外围格淡出，位移时不露错位 */
@@ -1392,7 +1460,6 @@ window.addEventListener("mousedown", (e) => {
 /* 拨轮：数字带直接跟着鼠标走（不是一格一格跳），跨过一格才落定一个值。
    之前只做"跨一格才动一次"，中间那段完全不动，手感是"不跟手"。 */
 function scrubCommit(dir) {
-  tickSound(dir);
   setMinutes(wrapMin(minutes + dir));
   const band = $("numBand"), tick = $("tickBand");
   band.style.transform = "";        /* 文字已经换了一批，带子回到原位 */
@@ -1453,40 +1520,24 @@ function setBackdrop(p) {
 if (window.wgt.onBackdrop) window.wgt.onBackdrop(setBackdrop);
 if (window.wgt.backdropNow) window.wgt.backdropNow().then(setBackdrop).catch(() => {});
 
-/* ================= 外观（透明度 / 磨砂） ================= */
+/* ================= 外观（透明度 / 磨砂） =================
+   设置面板已经挪到卡片外面的独立小窗（look.html），
+   卡片这边只负责"收到值就应用"，不再自带滑杆。 */
 const LOOK = { alpha: 1, frost: 0 };
 function applyLook() {
   const r = document.documentElement.style;
   r.setProperty("--a", String(LOOK.alpha));
   r.setProperty("--frost", LOOK.frost + "px");
-  const ai = $("lkAlpha"), fi = $("lkFrost");
-  if (ai) ai.value = String(Math.round(LOOK.alpha * 100));
-  if (fi) fi.value = String(Math.round(LOOK.frost));
-  if ($("lkAlphaV")) $("lkAlphaV").textContent = Math.round(LOOK.alpha * 100) + "%";
-  if ($("lkFrostV")) $("lkFrostV").textContent = Math.round(LOOK.frost) + "px";
 }
-let lookTimer = null;
-function saveLookSoon() {
-  clearTimeout(lookTimer);
-  lookTimer = setTimeout(() => { try { window.wgt.setLook(LOOK); } catch (e) {} }, 220);
+function setLook(v) {
+  if (!v) return;
+  if (Number.isFinite(v.alpha)) LOOK.alpha = Math.min(1, Math.max(0.08, v.alpha));
+  if (Number.isFinite(v.frost)) LOOK.frost = Math.min(20, Math.max(0, v.frost));
+  applyLook();
 }
-$("lkAlpha").addEventListener("input", () => {
-  LOOK.alpha = Math.min(1, Math.max(0.08, Number($("lkAlpha").value) / 100));
-  applyLook(); saveLookSoon();
-});
-$("lkFrost").addEventListener("input", () => {
-  LOOK.frost = Math.min(20, Math.max(0, Number($("lkFrost").value) || 0));
-  applyLook(); saveLookSoon();
-});
-$("lkClose").addEventListener("click", () => $("panel").classList.remove("on"));
-if (window.wgt.onShowLook) window.wgt.onShowLook(() => $("panel").classList.toggle("on"));
+if (window.wgt.onLook) window.wgt.onLook(setLook);
 if (window.wgt.getLook) {
-  window.wgt.getLook().then((v) => {
-    if (!v) return;
-    if (Number.isFinite(v.alpha)) LOOK.alpha = Math.min(1, Math.max(0.08, v.alpha));
-    if (Number.isFinite(v.frost)) LOOK.frost = Math.min(20, Math.max(0, v.frost));
-    applyLook();
-  }).catch(() => {});
+  window.wgt.getLook().then(setLook).catch(() => {});
 }
 applyLook();
 
