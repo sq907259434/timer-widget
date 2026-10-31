@@ -1,7 +1,7 @@
 {
   "name": "timer-card",
   "productName": "TimerCard",
-  "version": "2.1.1",
+  "version": "2.1.2",
   "description": "倒计时 —— 桌面小卡：滚轮调时间、双击输入、播放/暂停（Electron 独立版）",
   "author": {
     "name": "sq907259434"

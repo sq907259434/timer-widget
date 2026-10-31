@@ -279,7 +279,8 @@
 
   /* 悬停出现的小叉：不用再右键找"退出" */
   .xclose{
-    position:absolute; right:44px; top:10px; z-index:8;
+    /* 右/上等距 = 落在 45° 对角线上，和圆角弧线同一条线 */
+    position:absolute; right:13px; top:13px; z-index:8;
     width:22px; height:22px; padding:0; border:0; border-radius:50%;
     background:rgba(255,255,255,.08);
     color:rgba(255,255,255,.7);
@@ -291,6 +292,8 @@
   .xclose svg{ width:11px; height:11px; }
   .card:hover .xclose{ opacity:1; transform:none; }
   .xclose:hover{ background:rgba(255,90,90,.85); color:#fff; }
+  /* 鼠标压到右上角缩放热区时把叉藏起来，否则角就拖不动了 */
+  .rz-tr:hover ~ .xclose{ opacity:0; pointer-events:none; }
   body.light .xclose{ background:rgba(0,0,0,.07); color:rgba(0,0,0,.55); }
   body.light .xclose:hover{ background:#E8564E; color:#fff; }
 
@@ -583,16 +586,16 @@
 
   <div class="hint" id="hint">滚轮调时间 · 双击输入</div>
 
+  <i class="rz rz-tl" data-c="tl"></i>
+  <i class="rz rz-tr" data-c="tr"></i>
+  <i class="rz rz-bl" data-c="bl"></i>
+  <i class="rz rz-br" data-c="br"></i>
+
   <button class="xclose" id="xclose" title="退出">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
       <path d="M6 6l12 12M18 6L6 18"/>
     </svg>
   </button>
-
-  <i class="rz rz-tl" data-c="tl"></i>
-  <i class="rz rz-tr" data-c="tr"></i>
-  <i class="rz rz-bl" data-c="bl"></i>
-  <i class="rz rz-br" data-c="br"></i>
 
   <div class="since" id="since"></div>
 
