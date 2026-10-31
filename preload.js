@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld("wgt", {
   onPreview: (fn) => ipcRenderer.on("timer:preview", (_e, name) => fn(name)),
   setSound: (name) => ipcRenderer.send("wgt:set-sound", name),
   onShowSound: (fn) => ipcRenderer.on("timer:show-sound", () => fn()),
+  /* 右键菜单切 分 / 秒 */
+  onUnit: (fn) => ipcRenderer.on("timer:unit", (_e, u) => fn(u)),
   /* 日间/夜间：主进程决定，页面只负责换皮 */
   theme: THEME,
   onTheme: (fn) => ipcRenderer.on("wgt:theme", (_e, t) => fn(t)),

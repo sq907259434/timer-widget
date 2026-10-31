@@ -1103,6 +1103,15 @@ async function buildMenu() {
 
   return Menu.buildFromTemplate([
     { label: "重置计时", accelerator: "F5", click: () => cardWin && cardWin.webContents.send("timer:reset") },
+    {
+      label: "单位",
+      submenu: [
+        { label: "分", type: "radio", checked: (readState().unit || "min") !== "sec",
+          click: () => { patchState({ unit: "min" }); cardWin && cardWin.webContents.send("timer:unit", "min"); } },
+        { label: "秒", type: "radio", checked: (readState().unit || "min") === "sec",
+          click: () => { patchState({ unit: "sec" }); cardWin && cardWin.webContents.send("timer:unit", "sec"); } },
+      ],
+    },
     { label: "再看一次引导", click: () => cardWin && cardWin.webContents.send("timer:hint") },
     { label: "5 分钟", click: () => cardWin && cardWin.webContents.send("wgt:preset", 5) },
     { label: "10 分钟", click: () => cardWin && cardWin.webContents.send("wgt:preset", 10) },
