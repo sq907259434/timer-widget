@@ -304,12 +304,22 @@
   /* 卡片缩到 213x93 后：横向内边距收到 8，数字与按钮中心都落在 52px。
      数字 46px 时文字宽 113px，可用 117px —— 刚好放得下（再小就会压到按钮）。 */
   body.wide .card .num.s0{ top:52px; font-size:46px; letter-spacing:-1px; }
+  /* 横版运行中默认只有数字；鼠标移上去才出现两个按钮；
+     到点之后按钮常显（这时用户要做的就是"再来一次/继续"） */
   body.wide .card .btns{
     inset:0; padding:0 8px 0;
     justify-content:space-between; align-items:center;
     pointer-events:none;
+    opacity:0; transition:opacity .16s ease;
   }
-  body.wide .card .btns .play, body.wide .card .btns .reset{ pointer-events:auto; }
+  body.wide .card .btns .play,
+  body.wide .card .btns .reset{ pointer-events:none; }
+  body.wide .card:hover .btns,
+  body.wide .card.alarm .btns{ opacity:1; }
+  body.wide .card:hover .btns .play,
+  body.wide .card:hover .btns .reset,
+  body.wide .card.alarm .btns .play,
+  body.wide .card.alarm .btns .reset{ pointer-events:auto; }
   body.wide .card .play, body.wide .card .reset{ width:40px; height:40px; margin-top:11px; }
   body.wide .card .play svg, body.wide .card .reset svg{ width:17px; height:17px; }
   /* 顶部三个也是"挪上去才出现"，和方形里一致 */
