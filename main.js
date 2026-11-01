@@ -919,6 +919,16 @@ function createWindow() {
     if (cardWin.isMinimized()) cardWin.restore();
     cardWin.show();
     cardWin.focus();
+    /* ★ 桌面层里它是 Progman 的子窗口，show()/focus() 压不过前面的窗口 ——
+       用户双击图标看起来"什么都没发生"。临时置顶 1.8 秒让人看见它在哪，再按设置恢复。 */
+    try {
+      cardWin.setAlwaysOnTop(true, "floating");
+      setTimeout(() => {
+        try {
+          if (!cardWin.isDestroyed() && readState().top !== true) cardWin.setAlwaysOnTop(false);
+        } catch (e) {}
+      }, 1800);
+    } catch (e) {}
     return cardWin;
   }
 
