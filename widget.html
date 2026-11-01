@@ -46,6 +46,15 @@
   /* 卡片完全不透明时，这层快照本来就看不见，但 blur 出来的光晕会从圆角外侧
      漏出一圈浅色边 —— 直接不画它。 */
   body.opaque #bd{ display:none; }
+  /* ★ 桌面层（Progman 子窗口）：子窗口里 alpha=0 的像素会渲染成黑色，
+     而 SetWindowRgn 硬裁又是 1 位掩码（圆角全是台阶）。
+     改成让快照铺满整个窗口、取消圆角裁剪 —— 圆角外那圈显示的就是"桌面本身"，
+     圆角只由 .card 的 border-radius 做抗锯齿过渡，既没黑角也没锯齿。
+     ★ 必须排在 body.noreg / body.opaque 之后：同优先级、后写的赢。 */
+  body.dlayer #bd{ display:block; clip-path:none; }
+  /* ★ 置顶模式（不在桌面层）：窗口本身 per-pixel 透明，露出来的就是背后真实的窗口 ——
+     不需要快照，圆角只由 .card 的 border-radius 抗锯齿，一定干净。 */
+  body:not(.dlayer) #bd{ display:none; }
 
   .card{
     position:absolute; inset:0;
@@ -817,6 +826,7 @@ if (!window.wgt) {
   const on = () => noop;
   window.wgt = {
     acrylic: false,
+    dlayer: false,
     close: noop, menu: noop, raise: noop, rest: noop, dragBegin: noop, dragEnd: noop,
     imeBegin: noop, imeEnd: noop, done: noop,
     backdropNow: () => Promise.resolve(null),
@@ -841,6 +851,9 @@ function applyTheme(t) {
   document.body.classList.toggle("light", t === "light");
 }
 applyTheme((window.wgt && window.wgt.theme) || "dark");
+/* 贴进桌面层：让 #bd 快照铺满整窗，圆角外那圈显示成桌面本身（见 CSS 的 body.dlayer） */
+if (window.wgt && window.wgt.dlayer) document.body.classList.add("dlayer");
+if (window.wgt && window.wgt.onDlayer) window.wgt.onDlayer((v) => document.body.classList.toggle("dlayer", v));
 if (window.wgt && window.wgt.onTheme) window.wgt.onTheme(applyTheme);
 
 const $ = (id) => document.getElementById(id);
@@ -1063,6 +1076,7 @@ function pause() {
   mode = "pause";
   view = "mini";              /* 点停止 = 切到简洁界面看结果 */
   if (raf) { cancelAnimationFrame(raf); raf = null; }
+  stopGuard();
   render();
   saveRun();
 }
@@ -1071,12 +1085,36 @@ function tickLoop() {
   if (raf) cancelAnimationFrame(raf);
   const step = () => {
     if (mode !== "run") return;
+    lastTickAt = Date.now();
     remain = Math.max(0, endAt - Date.now());
     if (remain <= 0) { finish(); return; }
     render();
     raf = requestAnimationFrame(step);
   };
   raf = requestAnimationFrame(step);
+  startGuard();
+}
+
+/* ================= 到点兜底（定时器） =================
+   ★ 截止判定原来**只**靠 requestAnimationFrame。rAF 依赖 vsync：
+     显示器休眠 / 锁屏 / 窗口被完全遮挡时它会停，于是到点不会触发 finish() ——
+     不响铃、不红闪、没有通知。powerMonitor 的 resume 只能补"系统睡眠→唤醒"，
+     补不了"显示器关掉"。这是倒计时应用最不该有的一类漏响。
+     这里再挂一条 setInterval（定时器不受 vsync 影响，窗口 backgroundThrottling 已关）：
+       · 每秒查一次截止时间，命中就 finish；
+       · 顺手看 rAF 是不是停了（>800ms 没心跳），停了就自己把数字刷新上。 */
+let guardTimer = 0, lastTickAt = 0;
+function stopGuard() {
+  if (guardTimer) { clearInterval(guardTimer); guardTimer = 0; }
+}
+function startGuard() {
+  stopGuard();
+  guardTimer = setInterval(() => {
+    if (mode !== "run") { stopGuard(); return; }
+    const left = endAt - Date.now();
+    if (left <= 0) { remain = 0; stopGuard(); finish(-left); return; }
+    if (Date.now() - lastTickAt > 800) { remain = left; render(); }
+  }, 500);
 }
 
 /* ================= 到点 ================= */
@@ -1103,6 +1141,7 @@ function startSince(fromMs) {
 function finish(overdueMs) {
   mode = "idle";
   remain = 0;
+  stopGuard();
   alarmOn = true;
   cardEl.classList.add("alarm");
   const over = Math.max(0, Math.round((overdueMs || 0) / 60000));
@@ -1635,7 +1674,10 @@ const LOOK = { alpha: 1, frost: 0 };
 function applyLook() {
   const r = document.documentElement.style;
   r.setProperty("--a", String(LOOK.alpha));
-  r.setProperty("--frost", LOOK.frost + "px");
+  /* ★ 磨砂已按用户要求彻底关掉：快照永远不模糊（-frost 强制 0）。
+     原来这里读 LOOK.frost，用户把滑杆拉到 16px 后整张卡就是一片糊 ——
+     桌面挂件要的是"看清桌面"，不是"隔着毛玻璃看"。 */
+  r.setProperty("--frost", "0px");
   /* 不透明（alpha≈1）时把桌面快照整层关掉，避免圆角外那圈模糊光晕 */
   document.body.classList.toggle("opaque", LOOK.alpha >= 0.995);
 }

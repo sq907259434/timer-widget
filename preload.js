@@ -2,6 +2,8 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 /* 是否使用系统磨砂：由主进程按 Windows 版本决定，通过启动参数传进来 */
 const ACRYLIC = process.argv.some((a) => a === "--wgt-acrylic=1");
+/* 是否贴在桌面层（Progman 子窗口）：页面据此让 #bd 快照铺满整窗，见 widget.html 的 body.dlayer */
+const DLAYER = process.argv.some((a) => a === "--wgt-dlayer=1");
 
 /* 初始主题（light / dark）：主进程已经按"跟随系统/手动"解析过，这里只认结果 */
 function argVal(name, dflt) {
@@ -12,6 +14,7 @@ const THEME = argVal("--wgt-theme", "dark");
 
 contextBridge.exposeInMainWorld("wgt", {
   acrylic: ACRYLIC,
+  dlayer: DLAYER,
   close: () => ipcRenderer.send("wgt:close"),
   menu: () => ipcRenderer.send("wgt:menu"),
   /* 鼠标指上来时临时浮到最前，移开还原（临时状态，不写存档） */
@@ -42,6 +45,8 @@ contextBridge.exposeInMainWorld("wgt", {
   onLook: (fn) => ipcRenderer.on("wgt:look", (_e, v) => fn(v || {})),
   /* 真透明模式：页面据此关掉桌面快照层，让真实背景透上来 */
   onNoReg: (fn) => ipcRenderer.on("wgt:noreg", (_e, v) => fn(!!v)),
+  /* 运行中切换 常驻桌面 / 置顶 时通知页面换模式 */
+  onDlayer: (fn) => ipcRenderer.on("wgt:dlayer", (_e, v) => fn(!!v)),
   /* 卡片上的图钉：钉在最前面 */
   getTop: () => ipcRenderer.invoke("wgt:get-top"),
   toggleTop: () => ipcRenderer.send("wgt:toggle-top"),

@@ -2,7 +2,7 @@
    和「待办清单」「天气卡片」同一套骨架（视觉与交互独立，代码不共用）：贴进桌面层、桌面快照做背景、
    主进程跟光标拖动、幽灵输入窗代收键盘。本卡只做一件事：倒计时。 */
 
-const { app, BrowserWindow, ipcMain, Menu, screen, globalShortcut, shell, nativeTheme, Notification, powerMonitor } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, screen, shell, nativeTheme, Notification, powerMonitor } = require("electron");
 
 /* Windows 上不设 AppUserModelId，toast 通知根本不弹（静默失败）。 */
 try { app.setAppUserModelId("com.timercard.desktop"); } catch (e) {}
@@ -34,12 +34,19 @@ function readScale() {
 }
 
 /* Windows 11 22H2+ 才有原生 acrylic。有就用系统磨砂（实时、真实模糊窗口背后的桌面）；
-   没有就退回半透明渐变。 */
+   没有就退回半透明渐变。
+
+   ★ 24H2（build 26100）起 DWMSBT_TRANSIENTWINDOW 已经废了 —— 实测 build 26200：
+     无论窗口背后是壁纸还是纯白网页，backgroundMaterial:"acrylic" 的窗口内部取像素
+     永远是 #d3d3d3（固定兜底色、不是采样；同一次测试里 mica/tabbed 还能跟随背景）。
+     而且这层材质由 DWM 画在**整个窗口矩形**上，SetWindowRgn 裁不掉它 ——
+     卡片圆角外侧就露出 4 个方块。所以 24H2 起直接走透明自绘。 */
 function acrylicSupported() {
   try {
     const parts = String(require("os").release()).split(".");
     const build = parseInt(parts[2], 10);
-    return Number.isFinite(build) && build >= 22621;
+    if (!Number.isFinite(build)) return false;
+    return build >= 22621 && build < 26100;
   } catch (e) {
     return false;
   }
@@ -96,12 +103,26 @@ function restoreTop(win) {
 
 const stateFile = () => path.join(app.getPath("userData"), "widget-state.json");
 
+/* ---------- 统一日志（带体积上限） ----------
+   每 5 秒一条心跳那条原来没有任何上限：约 1.5MB/天、500MB/年，日志迟早把盘吃满。
+   现在所有落盘都走 appendLog，超过 512KB 就整体清空重来（只留最近一段，够定位问题）。 */
+const LOG_MAX = 512 * 1024;
+const logFile = () => path.join(app.getPath("userData"), "win-events.log");
+function appendLog(line) {
+  try {
+    const f = logFile();
+    try { if (fs.statSync(f).size > LOG_MAX) fs.writeFileSync(f, ""); } catch (e) {}
+    fs.appendFileSync(f, line);
+  } catch (e) { /* 日志失败不影响功能 */ }
+}
+
+
 /* 启动期的异常必须落盘：createWindow 在 app.whenReady().then() 里跑，
    里面抛错只会变成一个静默的 unhandledRejection —— 进程活着、窗口不出现、
    日志一个字都没有，排查时完全看不出哪坏了（打包版踩过这个坑）。 */
 function logBootErr(kind, e) {
   try {
-    fs.appendFileSync(path.join(app.getPath("userData"), "win-events.log"),
+    appendLog(
       new Date().toISOString() + " " + kind + " " + ((e && e.stack) || String(e)) + "\n");
   } catch (x) {}
 }
@@ -143,21 +164,14 @@ function pushTheme() {
   }
 }
 
+/* 常驻桌面（不再是个选项）：和天气卡一致，卡片默认就贴在桌面层，
+   Win+D 不会把它收走，有窗口盖住时自然被盖住。
+   唯一的开关是「所有窗口置顶」：置顶 = 脱离桌面层浮到最前。
+   两者天然互斥（子窗口不能置顶），所以桌面层直接由 top 推导，不单独存。 */
 function desktopLayerOn() {
-  /* 默认开：另两张卡用户都开着了，新卡第一次启动就该是"贴进桌面"的样子；
-     用户在菜单里明确关掉才记 false。 */
-  try { return readState().desktopLayer !== false; } catch (e) { return true; }
+  try { return readState().top !== true; } catch (e) { return true; }
 }
 
-function toggleDesktopLayer(want) {
-  const on = !!want;
-  const cur = desktopLayerOn();
-  patchState(on ? { desktopLayer: true, top: false } : { desktopLayer: false });
-  if (cur === on) return on;
-  app.relaunch();
-  app.exit(0);
-  return on;
-}
 
 function writeState(s) {
   try {
@@ -309,7 +323,7 @@ function refreshSnapshot(reason) {
   }
   if (ok) pushBackdrop(40);
   try {
-    fs.appendFileSync(path.join(app.getPath("userData"), "win-events.log"),
+    appendLog(
       new Date().toISOString() + ` snapshot ${ok ? "OK" : "FAIL"} wda=${wda} (${reason || ""})\n`);
   } catch (e) {}
   return ok;
@@ -424,11 +438,26 @@ const _rgn = (() => {
 })();
 
 function applyCardRegion(w, force) {
-  /* 真透明：不设窗口区域。前提是窗口以 transparent:true 创建（见 USE_ACRYLIC），
-     否则不透明的窗口会在四角露出直角。 */
-  if (readState().noRegion === true) {
-    try { _rgn.SetWindowRgn(hwndOf(w), null, true); } catch (e) {}
-    try { w.webContents.send("wgt:noreg", true); } catch (e) {}
+  /* 只在区域真的存在时才清，避免每 3 秒一次多余的 SetWindowRgn 重绘 */
+  const clearRegion = () => {
+    try {
+      const probe = _rgn.CreateRoundRectRgn(0, 0, 1, 1, 1, 1);
+      const had = _rgn.GetWindowRgn(hwndOf(w), probe);
+      _rgn.DeleteObject(probe);
+      if (had > 0) _rgn.SetWindowRgn(hwndOf(w), null, true);
+    } catch (e) {}
+  };
+
+  /* ★ 只有"不透明窗口"才需要硬裁窗口区域（acrylic 模式下页面 alpha=0 的角落
+     会露出窗口底色）。透明窗口一律不设区域：
+       · 普通模式 → 圆角交给 .card 的 border-radius，边缘带 alpha 渐变，没有台阶；
+       · 桌面层   → 子窗口里 alpha=0 会渲染成黑色，所以让 #bd 快照铺满整窗
+                    （页面里 body.dlayer 取消了 clip-path），圆角外那圈显示的就是
+                    "桌面本身"，同样由 border-radius 抗锯齿过渡。
+     SetWindowRgn 是 1 位掩码、没有抗锯齿，能不设就不设。 */
+  if (!USE_ACRYLIC) {
+    clearRegion();
+    try { w.webContents.send("wgt:noreg", false); } catch (e) {}
     return;
   }
   try { w.webContents.send("wgt:noreg", false); } catch (e) {}
@@ -545,6 +574,9 @@ async function setTopState(w, want) {
     try { if (DL) await DL.set(true); } catch (e) {}
   }
   try { w.webContents.send("wgt:top", on); } catch (e) {}
+  /* 页面据此换模式：置顶模式不画桌面快照（走真透明，圆角一定干净） */
+  try { w.webContents.send("wgt:dlayer", !on); } catch (e) {}
+  applyCardRegion(w);
   return on;
 }
 
@@ -564,7 +596,7 @@ function openLookWin() {
   const cw = cardWin;
   if (!cw || cw.isDestroyed()) return;
 
-  const W = 236, H = 74, GAP = 10;
+  const W = 252, H = 148, GAP = 10;
   const b = cw.getBounds();
   let d = screen.getDisplayMatching(b);
   const a = d.workArea;
@@ -597,6 +629,66 @@ function openLookWin() {
 function toggleLookWin() {
   if (lookWin && !lookWin.isDestroyed()) closeLookWin();
   else openLookWin();
+}
+
+/* ================= 提示音浮窗 =================
+   和外观浮窗同一套路：卡片只有 260x240（mini 态更小），把 6 个音色塞进卡片里
+   字会小到看不清。所以整块搬到卡片外侧的独立小窗，绝不和卡片重叠。
+   优先级：右侧 → 左侧 → 下面 → 上面（哪边放得下就放哪边）。 */
+let soundWin = null;
+
+function closeSoundWin() {
+  if (!soundWin || soundWin.isDestroyed()) { soundWin = null; return; }
+  try { soundWin.close(); } catch (e) {}
+  soundWin = null;
+}
+
+function openSoundWin() {
+  if (soundWin && !soundWin.isDestroyed()) { soundWin.focus(); return; }
+  const cw = cardWin;
+  if (!cw || cw.isDestroyed()) return;
+
+  const W = 252, H = 244, GAP = 10;
+  const b = cw.getBounds();
+  const a = screen.getDisplayMatching(b).workArea;
+
+  let x = b.x + b.width + GAP;
+  let y = b.y;
+  if (x + W > a.x + a.width - 6) {          /* 右边放不下 → 试左边 */
+    x = b.x - W - GAP;
+    if (x < a.x + 6) {                       /* 左边也放不下 → 放下面 */
+      x = Math.round(b.x + (b.width - W) / 2);
+      y = b.y + b.height + GAP;
+      if (y + H > a.y + a.height - 6) y = b.y - H - GAP;   /* 下面也放不下 → 放上面 */
+    }
+  }
+  x = Math.min(Math.max(x, a.x + 6), a.x + a.width - W - 6);
+  y = Math.min(Math.max(y, a.y + 6), a.y + a.height - H - 6);
+
+  soundWin = new BrowserWindow({
+    width: W, height: H, x: Math.round(x), y: Math.round(y),
+    frame: false, transparent: true, backgroundColor: "#00000000",
+    resizable: false, minimizable: false, maximizable: false, fullscreenable: false,
+    skipTaskbar: true, alwaysOnTop: true, hasShadow: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "sound-preload.js"),
+      contextIsolation: true, nodeIntegration: false,
+      additionalArguments: [
+        "--wgt-theme=" + resolvedTheme(),
+        "--wgt-sounds=" + encodeURIComponent(JSON.stringify(ALARM_SOUNDS)),
+      ],
+    },
+  });
+  soundWin.loadFile(path.join(__dirname, "sound.html"));
+  soundWin.once("ready-to-show", () => { try { soundWin.show(); } catch (e) {} });
+  soundWin.on("blur", () => closeSoundWin());
+  soundWin.on("closed", () => { soundWin = null; });
+}
+
+function toggleSoundWin() {
+  if (soundWin && !soundWin.isDestroyed()) closeSoundWin();
+  else openSoundWin();
 }
 
 /* 切换 方形 / 横版：改窗口尺寸 + 圆角区域 + 通知页面。不重启。 */
@@ -812,7 +904,7 @@ function registerImeIpc() {
 /* 缩放的痕迹单独记一笔：出问题（尺寸不对、位置跑掉）时能一眼看到调了什么 */
 function scaleLog(msg) {
   try {
-    fs.appendFileSync(path.join(app.getPath("userData"), "win-events.log"),
+    appendLog(
       new Date().toISOString() + " " + msg + "\n");
   } catch (e) { /* 日志失败不影响功能 */ }
 }
@@ -833,7 +925,7 @@ function createWindow() {
   const z = readScale();
   const CS = cardSize();
   try {
-    fs.appendFileSync(path.join(app.getPath("userData"), "win-events.log"),
+    appendLog(
       new Date().toISOString() + ` scale resolved=${z} raw=${JSON.stringify(readState().scale)}\n`);
   } catch (e) {}
   const WIN_W = Math.round((CS.w + PAD * 2) * z);
@@ -893,6 +985,7 @@ function createWindow() {
       /* 把"是否启用系统磨砂"透给页面：磨砂模式下卡片必须全透明，否则会把它盖住 */
       additionalArguments: [
         "--wgt-acrylic=" + (USE_ACRYLIC ? "1" : "0"),
+        "--wgt-dlayer=" + (desktopLayerOn() ? "1" : "0"),
         "--wgt-card=timer",
         "--wgt-theme=" + resolvedTheme(),
       ],
@@ -907,7 +1000,7 @@ function createWindow() {
   if (!USE_ACRYLIC) {
     const bdlog = (s) => {
       try {
-        fs.appendFileSync(path.join(app.getPath("userData"), "win-events.log"),
+        appendLog(
           new Date().toISOString() + " " + s + "\n");
       } catch (e) {}
     };
@@ -921,7 +1014,7 @@ function createWindow() {
      一旦用户再报"卡片自己消失/弹出"，这就是精确现场。 */
   const evlogSafe = (msg) => {
     try {
-      fs.appendFileSync(path.join(app.getPath("userData"), "win-events.log"),
+      appendLog(
         new Date().toISOString() + " " + msg + "\n");
     } catch (e) { /* 日志失败不影响功能 */ }
   };
@@ -1009,7 +1102,12 @@ function createWindow() {
         }
         h = _win32.GetWindow(h, 2);   /* GW_HWNDNEXT = 2 */
       }
-      return apps <= 3;
+      /* ★ 阈值必须是 0，不能是 3。原来写 apps <= 3：用户开着两三个窗口时点一下
+         桌面（前台变 Progman、这些窗口仍然可见），就被判成"正在显示桌面"
+         → 卡片被 setAlwaysOnTop 顶到所有窗口前面。
+         Win+D 会把所有非置顶顶层窗口的 IsWindowVisible 直接置 false，
+         所以真·显示桌面时 apps 一定是 0。 */
+      return apps === 0;
     } catch (e) { return false; }
   };
 
@@ -1094,7 +1192,7 @@ function createWindow() {
   /* 窗口事件留痕 */
   const evlog = (ev) => {
     try {
-      fs.appendFileSync(path.join(app.getPath("userData"), "win-events.log"),
+      appendLog(
         new Date().toISOString() + " " + ev + "\n");
     } catch (e) { /* 日志失败不影响功能 */ }
   };
@@ -1103,8 +1201,11 @@ function createWindow() {
 
   /* 定位权限放行，拿不到会自动降级到网络定位 */
   try {
+    /* 只放给本地页面：handler 挂在**默认 session** 上，幽灵输入窗同属一个 session，
+       不限定来源等于给任何被导航过去的页面开定位权限。 */
     w.webContents.session.setPermissionRequestHandler((wc, permission, cb) => {
-      cb(permission === "geolocation");
+      const url = (wc && wc.getURL && wc.getURL()) || "";
+      cb(permission === "geolocation" && url.startsWith("file://"));
     });
   } catch (e) { /* 某些版本没有该方法 */ }
 
@@ -1127,7 +1228,19 @@ function createWindow() {
     }, 400);
   });
 
-  w.on("closed", () => { cardWin = null; });
+  /* ★ 关卡片要连幽灵输入窗一起销毁。它是个隐藏的 BrowserWindow（skipTaskbar），
+     只要还活着 Electron 就认为"还有窗口没关"，window-all-closed 永远不触发 ——
+     点右上角 × 之后进程留在后台，任务栏看不到、界面上也没有任何入口，
+     只能去任务管理器杀。触发路径：桌面层模式（默认就开着）下双击输入时间
+     → 建隐形输入窗 → 点 ×。 */
+  w.on("closed", () => {
+    cardWin = null;
+    imeTarget = null;
+    if (imeWin && !imeWin.isDestroyed()) { try { imeWin.destroy(); } catch (e) {} }
+    imeWin = null;
+    closeLookWin();
+    closeSoundWin();
+  });
 
   return w;
 }
@@ -1265,7 +1378,7 @@ function startAlarm(info) {
   const mins = Number(info && info.minutes) || 0;
   const over = Number(info && info.overdueMin) || 0;
   try {
-    fs.appendFileSync(path.join(app.getPath("userData"), "win-events.log"),
+    appendLog(
       new Date().toISOString() + ` alarm minutes=${mins} overdue=${over} mute=${cfg.mute} loop=${cfg.loop} toast=${Notification.isSupported()}\n`);
   } catch (e) {}
   const body = over > 0
@@ -1294,48 +1407,15 @@ async function buildMenu() {
 
   return Menu.buildFromTemplate([
     { label: "重置计时", accelerator: "F5", click: () => cardWin && cardWin.webContents.send("timer:reset") },
-    {
-      label: "单位",
-      submenu: [
-        { label: "分", type: "radio", checked: (readState().unit || "min") !== "sec",
-          click: () => { patchState({ unit: "min" }); cardWin && cardWin.webContents.send("timer:unit", "min"); } },
-        { label: "秒", type: "radio", checked: (readState().unit || "min") === "sec",
-          click: () => { patchState({ unit: "sec" }); cardWin && cardWin.webContents.send("timer:unit", "sec"); } },
-      ],
-    },
     { label: "再看一次引导", click: () => cardWin && cardWin.webContents.send("timer:hint") },
     { label: "5 分钟", click: () => cardWin && cardWin.webContents.send("wgt:preset", 5) },
     { label: "10 分钟", click: () => cardWin && cardWin.webContents.send("wgt:preset", 10) },
     { label: "25 分钟（番茄钟）", click: () => cardWin && cardWin.webContents.send("wgt:preset", 25) },
     { type: "separator" },
-    {
-      label: "主题",
-      submenu: [
-        { label: "跟随系统", type: "radio", checked: themeSetting() === "auto",
-          click: () => { patchState({ theme: "auto" }); pushTheme(); } },
-        { label: "日间（浅色）", type: "radio", checked: themeSetting() === "light",
-          click: () => { patchState({ theme: "light" }); pushTheme(); } },
-        { label: "夜间（深色）", type: "radio", checked: themeSetting() === "dark",
-          click: () => { patchState({ theme: "dark" }); pushTheme(); } },
-      ],
-    },
-    /* 提示音改成"打开卡片内面板"：原生菜单没有 hover 事件，
-       做不了"鼠标移上去就试听"，面板里可以。 */
-    { label: "提示音…", click: () => cardWin && cardWin.webContents.send("timer:show-sound") },
-    {
-      label: "到点静音",
-      type: "checkbox",
-      checked: (readState().sound || {}).mute === true,
-      click: (mi) => { patchState({ sound: { ...(readState().sound || {}), mute: !!mi.checked } }); },
-    },
-    {
-      label: "声音循环响（关掉只响三声）",
-      type: "checkbox",
-      checked: (readState().sound || {}).loop !== false,
-      click: (mi) => { patchState({ sound: { ...(readState().sound || {}), loop: !!mi.checked } }); },
-    },
-    { label: "外观设置（透明度）…", click: () => toggleLookWin() },
-    { label: "刷新桌面背景", click: () => refreshSnapshot("menu") },
+    /* 提示音打开独立浮窗（贴在卡片外侧）：卡片太小，面板塞进去字看不清。
+       浮窗里鼠标移到某一行就试听 —— 原生菜单没有 hover，做不到这个。 */
+    { label: "提示音…", click: () => toggleSoundWin() },
+    { label: "设置（透明度 / 主题 / 单位）…", click: () => toggleLookWin() },
     { type: "separator" },
     { type: "separator" },
     {
@@ -1355,24 +1435,7 @@ async function buildMenu() {
     },
     { type: "separator" },
     {
-      label: "贴进桌面（和桌面图标同层）",
-      type: "checkbox",
-      checked: st.desktopLayer === true,
-      click: (item) => { toggleDesktopLayer(item.checked); },
-    },
-    {
-      label: "全局透明（透出桌面/窗口，需重启）",
-      type: "checkbox",
-      checked: readState().noRegion === true,
-      click: (item) => {
-        patchState({ noRegion: !!item.checked });
-        /* transparent 是窗口创建时选项，改完必须重启才生效 */
-        app.relaunch();
-        app.exit(0);
-      },
-    },
-    {
-      label: "窗口置顶（会脱离桌面层）",
+      label: "所有窗口置顶（关掉就常驻桌面）",
       type: "checkbox",
       checked: onTop,
       click: (item) => { setTopState(cardWin, item.checked); },
@@ -1398,16 +1461,15 @@ app.whenReady().then(() => {
   /* ★ 真透明必须放弃 acrylic：acrylic 的窗口是不透明的，一旦不设窗口区域，
      四角就变成直角（2.5.0 那次翻车就是这么来的）。
      照待办卡的做法：真透明 = 不设区域 + 窗口 transparent。 */
-  USE_ACRYLIC = acrylicSupported() && !desktopLayerOn() && readState().noRegion !== true;
+  USE_ACRYLIC = acrylicSupported() && !desktopLayerOn();
   PAD = 0;
   createWindow();
   startDesktopWatch();   /* 桌面上松开左键 / 20 秒兜底 → 重抓快照 */
   registerImeIpc();      /* 桌面层里子窗口拿不到键盘焦点，搜索框靠幽灵输入窗代收 */
 
   /* 快捷键兜底：贴进桌面后万一看不见，Ctrl+Alt+2 一键切回普通窗口（会重启自己） */
-  try {
-    globalShortcut.register("Control+Alt+2", () => toggleDesktopLayer(!desktopLayerOn()));
-  } catch (e) { /* 注册失败不影响其它功能 */ }
+  /* ★ 不注册任何全局快捷键：Ctrl+Alt+2 这种没人记得住，还会和其他软件抢按键。
+     所有操作都走右键菜单（置顶 / 卡片大小 / 外观…）。 */
 
   const senderWin = (e) => BrowserWindow.fromWebContents(e.sender);
 
@@ -1436,6 +1498,7 @@ app.whenReady().then(() => {
   /* ---------- 桌面快照背景 + 外观（透明度/磨砂，与待办卡同款） ---------- */
   ipcMain.on("wgt:editing", (_e, on) => { editingNow = !!on; });
   ipcMain.on("wgt:close-look", () => closeLookWin());
+  ipcMain.on("wgt:close-sound", () => closeSoundWin());
   /* 卡片上的图钉：读当前状态 / 切换 */
   ipcMain.handle("wgt:get-top", () => readState().top === true);
   ipcMain.handle("wgt:get-layout", () => (layoutIsWide() ? "wide" : "full"));
@@ -1450,11 +1513,41 @@ app.whenReady().then(() => {
     setTopState(w, !(readState().top === true));
   });
   ipcMain.handle("wgt:get-sound", () => soundCfg());
-  ipcMain.on("wgt:set-sound", (_e, name) => {
-    if (!ALARM_SOUNDS.some(([id]) => id === name)) return;
-    patchState({ sound: { ...(readState().sound || {}), name: name } });
+  ipcMain.on("wgt:set-sound", (_e, v) => {
+    const cur = readState().sound || {};
+    /* 两种调用方式都支持：卡片页面传名字，提示音浮窗传 {mute, loop, name} 整包 */
+    if (typeof v === "string") {
+      if (!ALARM_SOUNDS.some(([id]) => id === v)) return;
+      patchState({ sound: { ...cur, name: v } });
+      return;
+    }
+    const o = (v && typeof v === "object") ? v : {};
+    const ok = ALARM_SOUNDS.some(([id]) => id === o.name) ? o.name : (cur.name || soundName());
+    patchState({ sound: { mute: o.mute === true, loop: o.loop !== false, name: ok } });
   });
   ipcMain.handle("wgt:backdrop-now", () => bdPayload());
+  /* 设置浮窗：除了透明度，其余几项也走这里（卡片太小，塞卡片里看不清） */
+  ipcMain.handle("wgt:get-settings", () => ({
+    theme: themeSetting(),
+    unit: (readState().unit || "min") === "sec" ? "sec" : "min",
+  }));
+  ipcMain.handle("wgt:set-settings", (e, v) => {
+    const o = (v && typeof v === "object") ? v : {};
+    appendLog("set-settings " + JSON.stringify(o) + " cur(layout=" + (layoutIsWide() ? "wide" : "full") +
+              " theme=" + themeSetting() + " unit=" + (readState().unit || "min") + " scale=" + readScale() + ")");
+    if (o.theme === "auto" || o.theme === "light" || o.theme === "dark") {
+      patchState({ theme: o.theme });
+      pushTheme();
+    }
+    if (o.unit === "min" || o.unit === "sec") {
+      patchState({ unit: o.unit });
+      try { if (cardWin && !cardWin.isDestroyed()) cardWin.webContents.send("timer:unit", o.unit); } catch (x) {}
+    }
+    return {
+      theme: themeSetting(),
+      unit: (readState().unit || "min") === "sec" ? "sec" : "min",
+    };
+  });
   ipcMain.handle("wgt:get-look", () => readState().look || null);
   ipcMain.handle("wgt:set-look", (e, v) => {
     const o = (v && typeof v === "object") ? v : {};
@@ -1541,6 +1634,3 @@ app.whenReady().then(() => {
 
 app.on("window-all-closed", () => { app.quit(); });
 
-app.on("will-quit", () => {
-  try { globalShortcut.unregisterAll(); } catch (e) { /* 无所谓 */ }
-});

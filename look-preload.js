@@ -10,4 +10,6 @@ contextBridge.exposeInMainWorld("look", {
   get: () => ipcRenderer.invoke("wgt:get-look"),
   set: (v) => ipcRenderer.invoke("wgt:set-look", v),
   close: () => ipcRenderer.send("wgt:close-look"),
+  getSettings: () => ipcRenderer.invoke("wgt:get-settings"),
+  setSettings: (v) => ipcRenderer.invoke("wgt:set-settings", v),
 });

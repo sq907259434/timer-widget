@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>提示音</title>
+<style>
+  /* 独立浮窗：贴在卡片外侧，绝不和卡片重叠。
+     卡片 mini 态只有 260x240，把声音列表塞进去字会小到看不清，所以整块搬出来。 */
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; width:100%; height:100%;
+    background:transparent; overflow:hidden;
+    font-family:-apple-system,"Segoe UI Variable Display","Segoe UI","Microsoft YaHei UI",system-ui,sans-serif;
+    color:#fff; cursor:default; user-select:none;
+  }
+  .box{
+    -webkit-app-region:drag;
+    position:absolute; inset:0;
+    border-radius:14px;
+    background:rgba(16,20,28,.97);
+    box-shadow:0 8px 26px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.09);
+    padding:9px 12px 8px;
+    display:flex; flex-direction:column;
+  }
+  body.light .box{
+    background:rgba(252,252,252,.99);
+    color:#111;
+    box-shadow:0 8px 26px rgba(0,0,0,.16), inset 0 0 0 1px rgba(0,0,0,.07);
+  }
+  h4{
+    margin:0 0 6px 22px; font-size:11px; font-weight:600; letter-spacing:.4px;
+    color:rgba(255,255,255,.55);
+  }
+  body.light h4{ color:rgba(0,0,0,.5); }
+  .back{
+    -webkit-app-region:no-drag;
+    position:absolute; left:8px; top:8px; width:16px; height:16px; border:0; padding:0;
+    border-radius:50%; background:rgba(255,255,255,.08); color:rgba(255,255,255,.7);
+    font-size:12px; line-height:1; cursor:pointer; display:grid; place-items:center;
+  }
+  .back:hover{ background:rgba(255,255,255,.2); color:#fff; }
+  body.light .back{ background:rgba(0,0,0,.07); color:rgba(0,0,0,.55); }
+  body.light .back:hover{ background:rgba(0,0,0,.14); color:#111; }
+  .x{
+    -webkit-app-region:no-drag;
+    position:absolute; right:8px; top:8px; width:16px; height:16px; border:0; padding:0;
+    border-radius:50%; background:rgba(255,255,255,.08); color:rgba(255,255,255,.6);
+    font-size:13px; line-height:1; cursor:pointer; display:grid; place-items:center;
+  }
+  .x:hover{ background:rgba(255,255,255,.18); color:#fff; }
+  body.light .x{ background:rgba(0,0,0,.07); color:rgba(0,0,0,.5); }
+  body.light .x:hover{ background:rgba(0,0,0,.14); color:#111; }
+
+  #list{ -webkit-app-region:no-drag; display:flex; flex-direction:column; gap:1px; }
+  .opt{
+    display:flex; align-items:center; gap:7px; height:24px; padding:0 6px;
+    border-radius:6px; font-size:11.5px; cursor:pointer;
+    color:rgba(255,255,255,.82);
+  }
+  body.light .opt{ color:rgba(0,0,0,.78); }
+  .opt:hover{ background:rgba(255,255,255,.09); }
+  body.light .opt:hover{ background:rgba(0,0,0,.06); }
+  .dot{
+    flex:0 0 12px; width:12px; height:12px; border-radius:50%;
+    border:1.5px solid rgba(255,255,255,.32); display:grid; place-items:center;
+  }
+  body.light .dot{ border-color:rgba(0,0,0,.3); }
+  .opt.on .dot{ border-color:#9CB4D8; }
+  .opt.on .dot::after{
+    content:""; width:6px; height:6px; border-radius:50%; background:#9CB4D8;
+  }
+  .opt span{ flex:1 1 auto; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  .sep{ height:1px; background:rgba(255,255,255,.09); margin:6px 0 4px; }
+  body.light .sep{ background:rgba(0,0,0,.08); }
+  .chk{
+    -webkit-app-region:no-drag;
+    display:flex; align-items:center; gap:7px; height:24px; padding:0 6px;
+    font-size:11.5px; cursor:pointer; color:rgba(255,255,255,.82);
+  }
+  body.light .chk{ color:rgba(0,0,0,.78); }
+  .chk input{ width:13px; height:13px; margin:0; accent-color:#9CB4D8; cursor:pointer; }
+</style>
+</head>
+<body>
+  <div class="box">
+    <h4>提示音</h4>
+    <button class="back" id="back" title="返回">‹</button>
+    <button class="x" id="x" title="关闭">×</button>
+    <div id="list"></div>
+    <div class="sep"></div>
+    <label class="chk"><input type="checkbox" id="mute"><span>到点静音</span></label>
+    <label class="chk"><input type="checkbox" id="loop"><span>循环响（关掉只响三声）</span></label>
+  </div>
+<script>
+  const $ = (id) => document.getElementById(id);
+  const SOUNDS = (window.snd && window.snd.sounds) || [];
+  document.body.classList.toggle("light", (window.snd && window.snd.theme) === "light");
+
+  let cur = { mute: false, loop: true, name: "a-dingdong" };
+  let audio = null;
+
+  /* 试听：鼠标移到某一行就放一遍（原生右键菜单做不到这个，所以面板得独立出来） */
+  function preview(name) {
+    if (!audio) { audio = new Audio(); audio.volume = 0.9; }
+    if (name === "system") { audio.pause(); return; }   /* 系统音没有文件，交给主进程 beep */
+    audio.src = "assets/alarm-" + name + ".wav";
+    try { audio.currentTime = 0; } catch (e) {}
+    audio.play().catch(() => {});
+  }
+
+  function render() {
+    const list = $("list");
+    list.innerHTML = "";
+    SOUNDS.forEach(([name, label]) => {
+      const d = document.createElement("div");
+      d.className = "opt" + (name === cur.name ? " on" : "");
+      d.innerHTML = '<i class="dot"></i><span></span>';
+      d.querySelector("span").textContent = label;
+      d.addEventListener("mouseenter", () => preview(name));
+      d.addEventListener("click", () => { cur.name = name; render(); push(); });
+      list.appendChild(d);
+    });
+  }
+
+  function push() {
+    window.snd.set({ mute: $("mute").checked, loop: $("loop").checked, name: cur.name });
+  }
+
+  $("mute").addEventListener("change", push);
+  $("loop").addEventListener("change", push);
+  $("back").addEventListener("click", () => window.snd.close());
+  $("x").addEventListener("click", () => window.snd.close());
+
+  render();
+  window.snd.get().then((v) => {
+    if (!v) return;
+    cur = { mute: v.mute === true, loop: v.loop !== false, name: v.name || "a-dingdong" };
+    $("mute").checked = cur.mute;
+    $("loop").checked = cur.loop;
+    render();
+  }).catch(() => {});
+</script>
+</body>
+</html>
